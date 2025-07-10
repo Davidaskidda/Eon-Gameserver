@@ -3,6 +3,8 @@
 #include "Rotator.h"
 #include "BuildingSMActor.h"
 #include "FortGameModeAthena.h"
+#include "OnlineReplStructs.h"
+#include "Text.h"
 
 #include "FortPlayerState.h"
 #include "BuildingWeapons.h"
@@ -51,14 +53,6 @@ void AFortPlayerController::ClientEquipItem(const FGuid& ItemGuid, bool bForceEx
 
 		this->ProcessEvent(ClientEquipItemFn, &AFortPlayerController_ClientEquipItem_Params);
 	}
-}
-
-void AFortPlayerController::ClientForceCancelBuildingTool()
-{
-	static auto ClientForceCancelBuildingToolFn = FindObject<UFunction>(L"/Script/FortniteGame.FortPlayerController.ClientForceCancelBuildingTool");
-
-	if (ClientForceCancelBuildingToolFn)
-		this->ProcessEvent(ClientForceCancelBuildingToolFn);
 }
 
 bool AFortPlayerController::DoesBuildFree()
@@ -414,7 +408,7 @@ void AFortPlayerController::ServerExecuteInventoryItemHook(AFortPlayerController
 	}
 }
 
-void AFortPlayerController::ServerAttemptInteractHook(UObject* Context, FFrame* Stack)
+void AFortPlayerController::ServerAttemptInteractHook(UObject* Context, FFrame* Stack, void* Ret)
 {
 	// static auto LlamaClass = FindObject<UClass>(L"/Game/Athena/SupplyDrops/Llama/AthenaSupplyDrop_Llama.AthenaSupplyDrop_Llama_C");
 	static auto FortAthenaSupplyDropClass = FindObject<UClass>(L"/Script/FortniteGame.FortAthenaSupplyDrop");
@@ -479,7 +473,7 @@ void AFortPlayerController::ServerAttemptInteractHook(UObject* Context, FFrame* 
 	else if (ReceivingActor->IsA(FortAthenaVehicleClass))
 	{
 		auto Vehicle = (AFortAthenaVehicle*)ReceivingActor;
-		ServerAttemptInteractOriginal(Context, Stack);
+		ServerAttemptInteractOriginal(Context, Stack, Ret);
 		
 		if (!AreVehicleWeaponsEnabled())
 			return;
@@ -504,215 +498,140 @@ void AFortPlayerController::ServerAttemptInteractHook(UObject* Context, FFrame* 
 		if (!WorldInventory)
 			return;
 
-		auto NewAndModifiedInstances = WorldInventory->AddItem(VehicleWeaponDefinition, nullptr, 1, 9999);
-
+		auto NewAndModifiedInstances = WorldInventory->AddItem(VehicleWeaponDefinition, nullptr);
 		auto NewVehicleInstance = NewAndModifiedInstances.first[0];
 
 		if (!NewVehicleInstance)
 			return;
 
-		static auto FortItemEntrySize = FFortItemEntry::GetStructSize();
+		WorldInventory->Update();
 
-		auto& ReplicatedEntries = WorldInventory->GetItemList().GetReplicatedEntries();
+		auto VehicleWeapon = Pawn->EquipWeaponDefinition(VehicleWeaponDefinition, NewVehicleInstance->GetItemEntry()->GetItemGuid());
+		// PlayerController->ServerExecuteInventoryItemHook(PlayerController, newitem->GetItemEntry()->GetItemGuid());
 
-		for (int i = 0; i < ReplicatedEntries.Num(); i++)
+		/* static auto GetSeatWeaponComponentFn = FindObject<UFunction>("/Script/FortniteGame.FortAthenaVehicle.GetSeatWeaponComponent");
+
+		if (GetSeatWeaponComponentFn)
 		{
-			auto ReplicatedEntry = ReplicatedEntries.AtPtr(i, FortItemEntrySize);
+			struct { int SeatIndex; UObject* ReturnValue; } AFortAthenaVehicle_GetSeatWeaponComponent_Params{};
 
-			if (ReplicatedEntry->GetItemGuid() == NewVehicleInstance->GetItemEntry()->GetItemGuid())
+			Vehicle->ProcessEvent(GetSeatWeaponComponentFn, &AFortAthenaVehicle_GetSeatWeaponComponent_Params);
+
+			UObject* WeaponComponent = AFortAthenaVehicle_GetSeatWeaponComponent_Params.ReturnValue;
+
+			if (!WeaponComponent)
+				return;
+
+			static auto WeaponSeatDefinitionStructSize = FindObject<UClass>("/Script/FortniteGame.WeaponSeatDefinition")->GetPropertiesSize();
+			static auto VehicleWeaponOffset = FindOffsetStruct("/Script/FortniteGame.WeaponSeatDefinition", "VehicleWeapon");
+			static auto SeatIndexOffset = FindOffsetStruct("/Script/FortniteGame.WeaponSeatDefinition", "SeatIndex");
+			static auto WeaponSeatDefinitionsOffset = WeaponComponent->GetOffset("WeaponSeatDefinitions");
+			auto& WeaponSeatDefinitions = WeaponComponent->Get<TArray<__int64>>(WeaponSeatDefinitionsOffset);
+
+			for (int i = 0; i < WeaponSeatDefinitions.Num(); ++i)
 			{
-				WorldInventory->GetItemList().MarkItemDirty(ReplicatedEntry);
-				WorldInventory->GetItemList().MarkItemDirty(NewVehicleInstance->GetItemEntry());
-				WorldInventory->HandleInventoryLocalUpdate();
+				auto WeaponSeat = WeaponSeatDefinitions.AtPtr(i, WeaponSeatDefinitionStructSize);
 
-				PlayerController->ServerExecuteInventoryItemHook(PlayerController, NewVehicleInstance->GetItemEntry()->GetItemGuid());
+				if (*(int*)(__int64(WeaponSeat) + SeatIndexOffset) != Vehicle->FindSeatIndex(Pawn))
+					continue;
+
+				auto VehicleGrantedWeaponItem = (TWeakObjectPtr<UFortItem>*)(__int64(WeaponSeat) + 0x20);
+
+				VehicleGrantedWeaponItem->ObjectIndex = NewVehicleInstance->InternalIndex;
+				VehicleGrantedWeaponItem->ObjectSerialNumber = GetItemByIndex(NewVehicleInstance->InternalIndex)->SerialNumber;
+
+				static auto bWeaponEquippedOffset = WeaponComponent->GetOffset("bWeaponEquipped");
+				WeaponComponent->Get<bool>(bWeaponEquippedOffset) = true;
+
+				break;
 			}
-		}
+		} */
 
 		return;
 	}
 	else if (ReceivingActor->IsA(BuildingItemCollectorActorClass))
 	{
-		if (Engine_Version >= 424 && Fortnite_Version < 15 && ReceivingActor->GetFullName().contains("Wumba"))
-		{
-			static auto InteractionBeingAttemptedOffset = FindOffsetStruct(StructName, "InteractionBeingAttempted");
-			auto InteractionBeingAttempted = *(EInteractionBeingAttempted*)(__int64(Params) + InteractionBeingAttemptedOffset);
+		auto WorldInventory = PlayerController->GetWorldInventory();
 
-			bool bIsSidegrading = InteractionBeingAttempted == EInteractionBeingAttempted::SecondInteraction ? true : false;
-	
-			LOG_INFO(LogDev, "bIsSidegrading: {}", (bool)bIsSidegrading);
-	
-			struct FWeaponUpgradeItemRow
-			{
-				void* FTableRowBaseInheritance;
-				UFortWeaponItemDefinition*		  CurrentWeaponDef;                                  // 0x8(0x8)(Edit, ZeroConstructor, DisableEditOnInstance, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic)
-				UFortWeaponItemDefinition*		  UpgradedWeaponDef;                                 // 0x10(0x8)(Edit, ZeroConstructor, DisableEditOnInstance, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic)
-				EFortWeaponUpgradeCosts           WoodCost;                                          // 0x18(0x1)(Edit, ZeroConstructor, DisableEditOnInstance, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic)
-				EFortWeaponUpgradeCosts           MetalCost;                                         // 0x19(0x1)(Edit, ZeroConstructor, DisableEditOnInstance, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic)
-				EFortWeaponUpgradeCosts           BrickCost;                                         // 0x1A(0x1)(Edit, ZeroConstructor, DisableEditOnInstance, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic)
-				EFortWeaponUpgradeDirection       Direction;
-			};
-	
-			static auto WumbaDataTable = FindObject<UDataTable>(L"/Game/Items/Datatables/AthenaWumbaData.AthenaWumbaData");
-	
-			auto& LootPackagesRowMap = WumbaDataTable->GetRowMap();
-	
-			auto Pawn = Cast<AFortPawn>(PlayerController->GetPawn());
-			auto CurrentHeldWeapon = Pawn->GetCurrentWeapon();
-			auto CurrentHeldWeaponDef = CurrentHeldWeapon->GetWeaponData();
-	
-			auto Direction = bIsSidegrading ? EFortWeaponUpgradeDirection::Horizontal : EFortWeaponUpgradeDirection::Vertical;
-	
-			LOG_INFO(LogDev, "Direction: {}", (int)Direction);
-	
-			FWeaponUpgradeItemRow* FoundRow = nullptr;
-	
-			for (int i = 0; i < LootPackagesRowMap.Pairs.Elements.Data.Num(); i++)
-			{
-				auto& Pair = LootPackagesRowMap.Pairs.Elements.Data.at(i).ElementData.Value;
-				auto First = Pair.First;
-				auto Row = (FWeaponUpgradeItemRow*)Pair.Second;
-	
-				if (Row->CurrentWeaponDef == CurrentHeldWeaponDef && Row->Direction == Direction)
-				{
-					FoundRow = Row;
-					break;
-				}
-			}
-	
-			if (!FoundRow)
-			{
-				LOG_WARN(LogGame, "Failed to find row!");
-				return;
-			}
-	
-			auto NewDefinition = FoundRow->UpgradedWeaponDef;
-	
-			LOG_INFO(LogDev, "UpgradedWeaponDef: {}", NewDefinition->GetFullName());
-	
-			int WoodCost = (int)FoundRow->WoodCost * 50;
-			int StoneCost = (int)FoundRow->BrickCost * 50 - 400;
-			int MetalCost = (int)FoundRow->MetalCost * 50 - 200;
-	
-			if (bIsSidegrading)
-			{
-				WoodCost = 20;
-				StoneCost = 20;
-				MetalCost = 20;
-			}
-	
-			static auto WoodItemData = FindObject<UFortItemDefinition>(L"/Game/Items/ResourcePickups/WoodItemData.WoodItemData");
-			static auto StoneItemData = FindObject<UFortItemDefinition>(L"/Game/Items/ResourcePickups/StoneItemData.StoneItemData");
-			static auto MetalItemData = FindObject<UFortItemDefinition>(L"/Game/Items/ResourcePickups/MetalItemData.MetalItemData");
-	
-			auto WorldInventory = PlayerController->GetWorldInventory();
-	
-			auto WoodInstance = WorldInventory->FindItemInstance(WoodItemData);
-			auto WoodCount = WoodInstance->GetItemEntry()->GetCount();
-	
-			auto StoneInstance = WorldInventory->FindItemInstance(StoneItemData);
-			auto StoneCount = StoneInstance->GetItemEntry()->GetCount();
-	
-			auto MetalInstance = WorldInventory->FindItemInstance(MetalItemData);
-			auto MetalCount = MetalInstance->GetItemEntry()->GetCount();
-	
+		if (!WorldInventory)
+			return ServerAttemptInteractOriginal(Context, Stack, Ret);
+
+		auto ItemCollector = ReceivingActor;
+		static auto ActiveInputItemOffset = ItemCollector->GetOffset("ActiveInputItem");
+		auto CurrentMaterial = ItemCollector->Get<UFortWorldItemDefinition*>(ActiveInputItemOffset); // InteractType->OptionalObjectData
+
+		if (!CurrentMaterial)
+			return ServerAttemptInteractOriginal(Context, Stack, Ret);
+
+		int Index = 0;
+
+		// this is a weird way of getting the current item collection we are on.
+
+		static auto StoneItemData = FindObject<UFortResourceItemDefinition>(L"/Game/Items/ResourcePickups/StoneItemData.StoneItemData");
+		static auto MetalItemData = FindObject<UFortResourceItemDefinition>(L"/Game/Items/ResourcePickups/MetalItemData.MetalItemData");
+
+		if (CurrentMaterial == StoneItemData)
+			Index = 1;
+		else if (CurrentMaterial == MetalItemData)
+			Index = 2;
+
+		static auto ItemCollectionsOffset = ItemCollector->GetOffset("ItemCollections");
+		auto& ItemCollections = ItemCollector->Get<TArray<FCollectorUnitInfo>>(ItemCollectionsOffset);
+
+		auto ItemCollection = ItemCollections.AtPtr(Index, FCollectorUnitInfo::GetPropertiesSize());
+
+		if (Fortnite_Version < 8.10)
+		{
+			auto Cost = ItemCollection->GetInputCount()->GetValue();
+
+			if (!CurrentMaterial)
+				return ServerAttemptInteractOriginal(Context, Stack, Ret);
+
+			auto MatInstance = WorldInventory->FindItemInstance(CurrentMaterial);
+
+			if (!MatInstance)
+				return ServerAttemptInteractOriginal(Context, Stack, Ret);
+
 			bool bShouldUpdate = false;
-	
-			WorldInventory->RemoveItem(WoodInstance->GetItemEntry()->GetItemGuid(), &bShouldUpdate, WoodCost);
-			WorldInventory->RemoveItem(StoneInstance->GetItemEntry()->GetItemGuid(), &bShouldUpdate, StoneCost);
-			WorldInventory->RemoveItem(MetalInstance->GetItemEntry()->GetItemGuid(), &bShouldUpdate, MetalCost);
-	
-			WorldInventory->RemoveItem(CurrentHeldWeapon->GetItemEntryGuid(), &bShouldUpdate, 1, true);
-	
-			WorldInventory->AddItem(NewDefinition, &bShouldUpdate);
-	
+
+			if (!WorldInventory->RemoveItem(MatInstance->GetItemEntry()->GetItemGuid(), &bShouldUpdate, Cost, true))
+				return ServerAttemptInteractOriginal(Context, Stack, Ret);
+
 			if (bShouldUpdate)
 				WorldInventory->Update();
 		}
-		else
+
+		for (int z = 0; z < ItemCollection->GetOutputItemEntry()->Num(); z++)
 		{
-			auto WorldInventory = PlayerController->GetWorldInventory();
-	
-			if (!WorldInventory)
-				return ServerAttemptInteractOriginal(Context, Stack);
-	
-			auto ItemCollector = ReceivingActor;
-			static auto ActiveInputItemOffset = ItemCollector->GetOffset("ActiveInputItem");
-			auto CurrentMaterial = ItemCollector->Get<UFortWorldItemDefinition*>(ActiveInputItemOffset); // InteractType->OptionalObjectData
-	
-			if (!CurrentMaterial)
-				return ServerAttemptInteractOriginal(Context, Stack);
-	
-			int Index = 0;
-	
-			// this is a weird way of getting the current item collection we are on.
-	
-			static auto StoneItemData = FindObject<UFortResourceItemDefinition>(L"/Game/Items/ResourcePickups/StoneItemData.StoneItemData");
-			static auto MetalItemData = FindObject<UFortResourceItemDefinition>(L"/Game/Items/ResourcePickups/MetalItemData.MetalItemData");
-	
-			if (CurrentMaterial == StoneItemData)
-				Index = 1;
-			else if (CurrentMaterial == MetalItemData)
-				Index = 2;
-	
-			static auto ItemCollectionsOffset = ItemCollector->GetOffset("ItemCollections");
-			auto& ItemCollections = ItemCollector->Get<TArray<FCollectorUnitInfo>>(ItemCollectionsOffset);
-	
-			auto ItemCollection = ItemCollections.AtPtr(Index, FCollectorUnitInfo::GetPropertiesSize());
-	
-			if (Fortnite_Version < 8.10)
-			{
-				auto Cost = ItemCollection->GetInputCount()->GetValue();
-	
-				if (!CurrentMaterial)
-					return ServerAttemptInteractOriginal(Context, Stack);
-	
-				auto MatInstance = WorldInventory->FindItemInstance(CurrentMaterial);
-	
-				if (!MatInstance)
-					return ServerAttemptInteractOriginal(Context, Stack);
-	
-				bool bShouldUpdate = false;
-	
-				if (!WorldInventory->RemoveItem(MatInstance->GetItemEntry()->GetItemGuid(), &bShouldUpdate, Cost, true))
-					return ServerAttemptInteractOriginal(Context, Stack);
-	
-				if (bShouldUpdate)
-					WorldInventory->Update();
-			}
-	
-			for (int z = 0; z < ItemCollection->GetOutputItemEntry()->Num(); z++)
-			{
-				auto Entry = ItemCollection->GetOutputItemEntry()->AtPtr(z, FFortItemEntry::GetStructSize());
-	
-				PickupCreateData CreateData;
-				CreateData.ItemEntry = FFortItemEntry::MakeItemEntry(Entry->GetItemDefinition(), Entry->GetCount(), Entry->GetLoadedAmmo(), MAX_DURABILITY, Entry->GetLevel());
-				CreateData.SpawnLocation = LocationToSpawnLoot;
-				CreateData.PawnOwner = PlayerController->GetMyFortPawn(); // hmm
-				CreateData.bShouldFreeItemEntryWhenDeconstructed = true;
-	
-				AFortPickup::SpawnPickup(CreateData);
-			}
-	
-			static auto bCurrentInteractionSuccessOffset = ItemCollector->GetOffset("bCurrentInteractionSuccess", false);
-	
-			if (bCurrentInteractionSuccessOffset != -1)
-			{
-				static auto bCurrentInteractionSuccessFieldMask = GetFieldMask(ItemCollector->GetProperty("bCurrentInteractionSuccess"));
-				ItemCollector->SetBitfieldValue(bCurrentInteractionSuccessOffset, bCurrentInteractionSuccessFieldMask, true); // idek if this is needed
-			}
-	
-			static auto DoVendDeath = FindObject<UFunction>(L"/Game/Athena/Items/Gameplay/VendingMachine/B_Athena_VendingMachine.B_Athena_VendingMachine_C.DoVendDeath");
-	
-			if (DoVendDeath)
-			{
-				ItemCollector->ProcessEvent(DoVendDeath);
-				ItemCollector->K2_DestroyActor();
-			}
+			auto Entry = ItemCollection->GetOutputItemEntry()->AtPtr(z, FFortItemEntry::GetStructSize());
+
+			PickupCreateData CreateData;
+			CreateData.ItemEntry = FFortItemEntry::MakeItemEntry(Entry->GetItemDefinition(), Entry->GetCount(), Entry->GetLoadedAmmo(), MAX_DURABILITY, Entry->GetLevel());
+			CreateData.SpawnLocation = LocationToSpawnLoot;
+			CreateData.PawnOwner = PlayerController->GetMyFortPawn(); // hmm
+			CreateData.bShouldFreeItemEntryWhenDeconstructed = true;
+
+			AFortPickup::SpawnPickup(CreateData);
+		}
+
+		static auto bCurrentInteractionSuccessOffset = ItemCollector->GetOffset("bCurrentInteractionSuccess", false);
+
+		if (bCurrentInteractionSuccessOffset != -1)
+		{
+			static auto bCurrentInteractionSuccessFieldMask = GetFieldMask(ItemCollector->GetProperty("bCurrentInteractionSuccess"));
+			ItemCollector->SetBitfieldValue(bCurrentInteractionSuccessOffset, bCurrentInteractionSuccessFieldMask, true); // idek if this is needed
+		}
+
+		static auto DoVendDeath = FindObject<UFunction>(L"/Game/Athena/Items/Gameplay/VendingMachine/B_Athena_VendingMachine.B_Athena_VendingMachine_C.DoVendDeath");
+
+		if (DoVendDeath)
+		{
+			ItemCollector->ProcessEvent(DoVendDeath);
+			ItemCollector->K2_DestroyActor();
 		}
 	}
 
-	return ServerAttemptInteractOriginal(Context, Stack);
+	return ServerAttemptInteractOriginal(Context, Stack, Ret);
 }
 
 void AFortPlayerController::ServerAttemptAircraftJumpHook(AFortPlayerController* PC, FRotator ClientRotation)
@@ -760,7 +679,7 @@ void AFortPlayerController::ServerAttemptAircraftJumpHook(AFortPlayerController*
 	{
 		if (false)
 		{
-			// honestly idk why this doesnt work ( ithink its suppsoed to be spectator)
+			// honestly idk why this doesnt work
 
 			auto NAME_Inactive = UKismetStringLibrary::Conv_StringToName(L"NAME_Inactive");
 
@@ -792,10 +711,9 @@ void AFortPlayerController::ServerAttemptAircraftJumpHook(AFortPlayerController*
 	{
 		NewPawnAsFort->SetHealth(100); // needed with server restart player?
 		
-		if (Globals::bLateGame)
+		if (Globals::lateGame)
 		{
 			NewPawnAsFort->SetShield(100);
-
 			NewPawnAsFort->TeleportTo(AircraftToJumpFrom->GetActorLocation(), FRotator());
 		}
 	}
@@ -838,19 +756,25 @@ void AFortPlayerController::ServerDropAllItemsHook(AFortPlayerController* Player
 	PlayerController->DropAllItems({ IgnoreItemDef });
 }
 
+//void AFortPlayerController::ClientWasKicked(AFortPlayerController* PlayerController, FText Reason)
+//{
+//	return ClientWasKickedOriginal(PlayerController, Reason);
+//}
+
+
 void AFortPlayerController::ServerCreateBuildingActorHook(UObject* Context, FFrame* Stack, void* Ret)
 {
 	auto PlayerController = (AFortPlayerController*)Context;
 
-	// if (!PlayerController) // ??
-		// return ServerCreateBuildingActorOriginal(Context, Stack, Ret);
+	if (!PlayerController) // ??
+		return ServerCreateBuildingActorOriginal(Context, Stack, Ret);
 
 	auto WorldInventory = PlayerController->GetWorldInventory();
 
 	if (!WorldInventory)
 		return ServerCreateBuildingActorOriginal(Context, Stack, Ret);
 
-	auto PlayerStateAthena = Cast<AFortPlayerStateAthena, false>(PlayerController->GetPlayerState());
+	auto PlayerStateAthena = Cast<AFortPlayerStateAthena>(PlayerController->GetPlayerState());
 
 	if (!PlayerStateAthena)
 		return ServerCreateBuildingActorOriginal(Context, Stack, Ret);
@@ -870,7 +794,7 @@ void AFortPlayerController::ServerCreateBuildingActorHook(UObject* Context, FFra
 		bMirrored = CreateBuildingData->bMirrored;
 
 		static auto BroadcastRemoteClientInfoOffset = PlayerController->GetOffset("BroadcastRemoteClientInfo");
-		UObject* BroadcastRemoteClientInfo = PlayerController->Get(BroadcastRemoteClientInfoOffset);
+		auto BroadcastRemoteClientInfo = PlayerController->Get(BroadcastRemoteClientInfoOffset);
 
 		static auto RemoteBuildableClassOffset = BroadcastRemoteClientInfo->GetOffset("RemoteBuildableClass");
 		BuildingClass = BroadcastRemoteClientInfo->Get<UClass*>(RemoteBuildableClassOffset);
@@ -893,7 +817,7 @@ void AFortPlayerController::ServerCreateBuildingActorHook(UObject* Context, FFra
 	if (!BuildingClass)
 		return ServerCreateBuildingActorOriginal(Context, Stack, Ret);
 
-	auto GameState = Cast<AFortGameStateAthena, false>(Cast<AFortGameMode, false>(GetWorld()->GetGameMode())->GetGameState());
+	auto GameState = Cast<AFortGameStateAthena>(((AFortGameMode*)GetWorld()->GetGameMode())->GetGameState());
 
 	auto StructuralSupportSystem = GameState->GetStructuralSupportSystem();
 
@@ -938,28 +862,20 @@ void AFortPlayerController::ServerCreateBuildingActorHook(UObject* Context, FFra
 
 	auto MatDefinition = UFortKismetLibrary::K2_GetResourceItemDefinition(BuildingActor->GetResourceType());
 
+	auto MatInstance = WorldInventory->FindItemInstance(MatDefinition);
+
 	bool bBuildFree = PlayerController->DoesBuildFree();
 
 	// LOG_INFO(LogDev, "MatInstance->GetItemEntry()->GetCount(): {}", MatInstance->GetItemEntry()->GetCount());
-	
-	if (!bBuildFree)
+
+	int MinimumMaterial = 10;
+	bool bShouldDestroy = MatInstance && MatInstance->GetItemEntry() ? MatInstance->GetItemEntry()->GetCount() < MinimumMaterial : true;
+
+	if (bShouldDestroy && !bBuildFree)
 	{
-		int MaterialCost = 10;
-
-		UFortItem* MatInstance = WorldInventory->FindItemInstance(MatDefinition);
-
-		if (!MatInstance || MatInstance->GetItemEntry()->GetCount() < MaterialCost)
-		{
-			ExistingBuildings.Free();
-			BuildingActor->SilentDie();
-			return ServerCreateBuildingActorOriginal(Context, Stack, Ret);
-		}
-
-		bool bShouldUpdate = false;
-		WorldInventory->RemoveItem(MatInstance->GetItemEntry()->GetItemGuid(), &bShouldUpdate, MaterialCost);
-
-		if (bShouldUpdate)
-			WorldInventory->Update();
+		ExistingBuildings.Free();
+		BuildingActor->SilentDie();
+		return ServerCreateBuildingActorOriginal(Context, Stack, Ret);
 	}
 
 	for (int i = 0; i < ExistingBuildings.Num(); ++i)
@@ -971,10 +887,18 @@ void AFortPlayerController::ServerCreateBuildingActorHook(UObject* Context, FFra
 
 	ExistingBuildings.Free();
 
-	// BuildingActor->SetCurrentBuildingLevel()
 	BuildingActor->SetPlayerPlaced(true);
 	BuildingActor->InitializeBuildingActor(PlayerController, BuildingActor, true);
 	BuildingActor->SetTeam(PlayerStateAthena->GetTeamIndex()); // required?
+
+	if (!bBuildFree)
+	{
+		bool bShouldUpdate = false;
+		WorldInventory->RemoveItem(MatInstance->GetItemEntry()->GetItemGuid(), &bShouldUpdate, 10);
+
+		if (bShouldUpdate)
+			WorldInventory->Update();
+	}
 
 	/*
 
@@ -1123,15 +1047,13 @@ void AFortPlayerController::ServerPlayEmoteItemHook(AFortPlayerController* Playe
 		return;
 
 	UObject* AbilityToUse = nullptr;
-	bool bShouldBeAbilityToUse = false;
 
 	static auto AthenaSprayItemDefinitionClass = FindObject<UClass>(L"/Script/FortniteGame.AthenaSprayItemDefinition");
 	static auto AthenaToyItemDefinitionClass = FindObject<UClass>(L"/Script/FortniteGame.AthenaToyItemDefinition");
-	static auto BGAClass = FindObject<UClass>(L"/Script/Engine.BlueprintGeneratedClass");
 
 	if (EmoteAsset->IsA(AthenaSprayItemDefinitionClass))
 	{
-		auto SprayGameplayAbilityDefault = FindObject(L"/Game/Abilities/Sprays/GAB_Spray_Generic.Default__GAB_Spray_Generic_C");
+		static auto SprayGameplayAbilityDefault = FindObject(L"/Game/Abilities/Sprays/GAB_Spray_Generic.Default__GAB_Spray_Generic_C");
 		AbilityToUse = SprayGameplayAbilityDefault;
 	}
 
@@ -1139,6 +1061,8 @@ void AFortPlayerController::ServerPlayEmoteItemHook(AFortPlayerController* Playe
 	{
 		static auto ToySpawnAbilityOffset = EmoteAsset->GetOffset("ToySpawnAbility");
 		auto& ToySpawnAbilitySoft = EmoteAsset->Get<TSoftObjectPtr<UClass>>(ToySpawnAbilityOffset);
+
+		static auto BGAClass = FindObject<UClass>(L"/Script/Engine.BlueprintGeneratedClass");
 
 		auto ToySpawnAbility = ToySpawnAbilitySoft.Get(BGAClass, true);
 
@@ -1205,11 +1129,6 @@ void AFortPlayerController::ServerPlayEmoteItemHook(AFortPlayerController* Playe
 	}
 }
 
-void AFortPlayerController::ServerPlaySprayItemHook(AFortPlayerController* PlayerController, UAthenaSprayItemDefinition* SprayAsset)
-{
-	PlayerController->ServerPlayEmoteItemHook(PlayerController, SprayAsset);
-}
-
 uint8 ToDeathCause(const FGameplayTagContainer& TagContainer, bool bWasDBNO = false, AFortPawn* Pawn = nullptr)
 {
 	static auto ToDeathCauseFn = FindObject<UFunction>(L"/Script/FortniteGame.FortPlayerStateAthena.ToDeathCause");
@@ -1265,6 +1184,28 @@ uint8 ToDeathCause(const FGameplayTagContainer& TagContainer, bool bWasDBNO = fa
 	return sub_7FF7AB499410(TagContainer, bWasDBNO);
 }
 
+DWORD WINAPI SpectateThread(LPVOID PC)
+{
+	auto PlayerController = (UObject*)PC;
+	//if (!PlayerController->IsValidLowLevel())
+		//MessageBoxA(0, "Failed at IsValidLowLevel", "Suck my cocky", 0x0);
+		//return 0;
+
+	auto SpectatingPC = Cast<AFortPlayerControllerAthena>(PlayerController);
+
+	if (!SpectatingPC)
+		return 0;
+
+	Sleep(3000);
+	
+	
+	LOG_INFO(LogDev, "bugha!");
+
+	SpectatingPC->SpectateOnDeath();
+
+	return 0;
+}
+
 DWORD WINAPI RestartThread(LPVOID)
 {
 	// We should probably use unreal engine's timing system for this.
@@ -1280,6 +1221,32 @@ DWORD WINAPI RestartThread(LPVOID)
 	Restart();
 
 	bIsInAutoRestart = false;
+
+	return 0;
+}
+
+static inline DWORD WINAPI KillGameThread(LPVOID)
+{
+	Sleep(Globals::secBeforeKillGame * 1000);
+
+	static auto World_NetDriverOffset = GetWorld()->GetOffset("NetDriver");
+	auto WorldNetDriver = GetWorld()->Get<UNetDriver*>(World_NetDriverOffset);
+	auto& ClientConnections = WorldNetDriver->GetClientConnections();
+
+	for (int i = 0; i < ClientConnections.Num(); ++i)
+	{
+		auto ClientConnection = ClientConnections.at(i);
+		static auto PlayerControllerOffset = ClientConnections.at(i)->GetOffset("PlayerController");
+		auto FortPC = Cast<AFortPlayerControllerAthena>(ClientConnections.at(i)->Get(PlayerControllerOffset));
+
+		if (!FortPC)
+			continue;
+
+		FortPC->ClientReturnToMainMenu(L"");
+	}
+
+	Sleep(1000);
+	std::system("taskkill /f /im FortniteClient-Win64-Shipping.exe");
 
 	return 0;
 }
@@ -1314,18 +1281,6 @@ void AFortPlayerController::ClientOnPawnDiedHook(AFortPlayerController* PlayerCo
 
 		DeathCause = ToDeathCause(Tags, false, DeadPawn); // DeadPawn->IsDBNO() ??
 
-		FGameplayTagContainer CopyTags;
-
-		for (int i = 0; i < Tags.GameplayTags.Num(); ++i)
-		{
-			CopyTags.GameplayTags.Add(Tags.GameplayTags.at(i));
-		}
-
-		for (int i = 0; i < Tags.ParentTags.Num(); ++i)
-		{
-			CopyTags.ParentTags.Add(Tags.ParentTags.at(i));
-		}
-
 		LOG_INFO(LogDev, "DeathCause: {}", (int)DeathCause);
 		LOG_INFO(LogDev, "DeadPawn->IsDBNO(): {}", DeadPawn->IsDBNO());
 		LOG_INFO(LogDev, "KillerPlayerState: {}", __int64(KillerPlayerState));
@@ -1338,7 +1293,7 @@ void AFortPlayerController::ClientOnPawnDiedHook(AFortPlayerController* PlayerCo
 			*(FVector*)(__int64(DeathInfo) + MemberOffsets::DeathInfo::DeathLocation) = DeathLocation;
 
 		if (MemberOffsets::DeathInfo::DeathTags != -1)
-			*(FGameplayTagContainer*)(__int64(DeathInfo) + MemberOffsets::DeathInfo::DeathTags) = CopyTags;
+			*(FGameplayTagContainer*)(__int64(DeathInfo) + MemberOffsets::DeathInfo::DeathTags) = Tags;
 
 		if (MemberOffsets::DeathInfo::bInitialized != -1)
 			*(bool*)(__int64(DeathInfo) + MemberOffsets::DeathInfo::bInitialized) = true;
@@ -1374,58 +1329,46 @@ void AFortPlayerController::ClientOnPawnDiedHook(AFortPlayerController* PlayerCo
 
 			KillerPlayerState->ClientReportKill(DeadPlayerState);
 
-			// KillerPlayerState->OnRep_Kills();
-
-			if (AmountOfHealthSiphon > 0)
-			{
-				auto KillerAbilityComp = KillerPlayerState->GetAbilitySystemComponent();
-
-				if (KillerAbilityComp)
+			/* LoopMutators([&](AFortAthenaMutator* Mutator) {
+				if (auto TDM_Mutator = Cast<AFortAthenaMutator_TDM>(Mutator))
 				{
-					auto ActivatableAbilities = KillerAbilityComp->GetActivatableAbilities();
-					auto& Items = ActivatableAbilities->GetItems();
-					for (size_t i = 0; i < Items.Num(); ++i)
+					struct
 					{
-						auto& Item = Items.At(i, FGameplayAbilitySpec::GetStructSize());
-						auto Ability = Item.GetAbility();
-						if (Ability && Ability->ClassPrivate && Ability->ClassPrivate->GetName().contains("Siphon"))
-						{
-							FGameplayTag Tag{};
-							Tag.TagName = UKismetStringLibrary::Conv_StringToName(TEXT("GameplayCue.Shield.PotionConsumed"));
+						int                                                EventId;                                                  // (Parm, ZeroConstructor, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic)
+						int                                                EventParam1;                                              // (Parm, ZeroConstructor, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic)
+						int                                                EventParam2;                                              // (Parm, ZeroConstructor, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic)
+						int                                                EventParam3;                                              // (Parm, ZeroConstructor, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic)
+					} AFortAthenaMutator_TDM_OnMutatorGameplayEvent_Params{ 1, 0, 0, 0 }; 
 
-							auto NetMulticast_InvokeGameplayCueAdded = FindObject<UFunction>(L"/Script/GameplayAbilities.AbilitySystemComponent.NetMulticast_InvokeGameplayCueAdded");
-							auto NetMulticast_InvokeGameplayCueExecuted = FindObject<UFunction>(L"/Script/GameplayAbilities.AbilitySystemComponent.NetMulticast_InvokeGameplayCueExecuted");
-
-							if (!NetMulticast_InvokeGameplayCueAdded || !NetMulticast_InvokeGameplayCueExecuted)
-								break;
-
-							static auto GameplayCueTagOffsetAdded = NetMulticast_InvokeGameplayCueAdded->GetOffsetFunc("GameplayCueTag");
-							static auto GameplayCueTagOffsetExecuted = NetMulticast_InvokeGameplayCueExecuted->GetOffsetFunc("GameplayCueTag");
-							static auto PredictionKeyOffsetAdded = NetMulticast_InvokeGameplayCueAdded->GetOffsetFunc("PredictionKey");
-
-							auto AddedParams = Alloc<void>(NetMulticast_InvokeGameplayCueAdded->GetPropertiesSize());
-							auto ExecutedParams = Alloc<void>(NetMulticast_InvokeGameplayCueExecuted->GetPropertiesSize());
-
-							if (!AddedParams || !ExecutedParams)
-								break;
-
-							*(FGameplayTag*)(int64(AddedParams) + GameplayCueTagOffsetAdded) = Tag;
-							*(FGameplayTag*)(int64(ExecutedParams) + GameplayCueTagOffsetExecuted) = Tag;
-							//(FPredictionKey*)(int64(AddedParams) + PredictionKeyOffsetAdded) = Tag;
-
-							KillerAbilityComp->ProcessEvent(NetMulticast_InvokeGameplayCueAdded, AddedParams);
-							KillerAbilityComp->ProcessEvent(NetMulticast_InvokeGameplayCueExecuted, ExecutedParams);
-
-							break;
-						}
-					}
+					static auto TDM_OnMutatorGameplayEventFn = FindObject<UFunction>("/Script/FortniteGame.FortAthenaMutator_TDM.OnMutatorGameplayEvent");
+					TDM_Mutator->ProcessEvent(TDM_OnMutatorGameplayEventFn, &AFortAthenaMutator_TDM_OnMutatorGameplayEvent_Params);
 				}
-			}
+				}); */
+
+			// KillerPlayerState->OnRep_Kills();
 		}
 
 		// LOG_INFO(LogDev, "Reported kill.");
 
-		if (AmountOfHealthSiphon > 0)
+		if (Globals::bRefreshMetsOnKill && Globals::refreshMethCount > 0)
+		{
+			auto WorldInventory = PlayerController->GetWorldInventory();
+
+			if (!WorldInventory)
+				return;
+
+			static auto WoodItemData = FindObject<UFortItemDefinition>(L"/Game/Items/ResourcePickups/WoodItemData.WoodItemData");
+			static auto StoneItemData = FindObject<UFortItemDefinition>(L"/Game/Items/ResourcePickups/StoneItemData.StoneItemData");
+			static auto MetalItemData = FindObject<UFortItemDefinition>(L"/Game/Items/ResourcePickups/MetalItemData.MetalItemData");
+
+			WorldInventory->AddItem(WoodItemData, nullptr, Globals::refreshMethCount);
+			WorldInventory->AddItem(StoneItemData, nullptr, Globals::refreshMethCount);
+			WorldInventory->AddItem(MetalItemData, nullptr, Globals::refreshMethCount);
+
+			WorldInventory->Update();
+		}
+
+		if (AmountOfHealthSiphon != 0)
 		{
 			if (KillerPawn && KillerPawn != DeadPawn)
 			{
@@ -1439,6 +1382,8 @@ void AFortPlayerController::ClientOnPawnDiedHook(AFortPlayerController* PlayerCo
 				int ShieldGiven = 0;
 				int HealthGiven = 0;
 				*/
+
+
 
 				if ((MaxHealth - Health) > 0)
 				{
@@ -1469,81 +1414,77 @@ void AFortPlayerController::ClientOnPawnDiedHook(AFortPlayerController* PlayerCo
 
 	bool bIsRespawningAllowed = GameState->IsRespawningAllowed(DeadPlayerState);
 
-	bool bDropInventory = true;
-
-	LoopMutators([&](AFortAthenaMutator* Mutator)
-		{
-			if (auto FortAthenaMutator_InventoryOverride = Cast<AFortAthenaMutator_InventoryOverride>(Mutator))
-			{
-				if (FortAthenaMutator_InventoryOverride->GetDropAllItemsOverride(DeadPlayerState->GetTeamIndex()) == EAthenaLootDropOverride::ForceKeep)
-				{
-					bDropInventory = false;
-				}
-			}
-		}
-	);
-
-	if (bDropInventory
-		&& !bIsRespawningAllowed
-		)
-	{
-		auto WorldInventory = PlayerController->GetWorldInventory();
-
-		if (WorldInventory)
-		{
-			auto& ItemInstances = WorldInventory->GetItemList().GetItemInstances();
-
-			std::vector<std::pair<FGuid, int>> GuidAndCountsToRemove;
-
-			for (int i = 0; i < ItemInstances.Num(); ++i)
-			{
-				auto ItemInstance = ItemInstances.at(i);
-
-				// LOG_INFO(LogDev, "[{}/{}] CurrentItemInstance {}", i, ItemInstances.Num(), __int64(ItemInstance));
-
-				if (!ItemInstance)
-					continue;
-
-				auto ItemEntry = ItemInstance->GetItemEntry();
-				auto WorldItemDefinition = Cast<UFortWorldItemDefinition>(ItemEntry->GetItemDefinition());
-
-				// LOG_INFO(LogDev, "[{}/{}] WorldItemDefinition {}", i, ItemInstances.Num(), WorldItemDefinition ? WorldItemDefinition->GetFullName() : "InvalidObject");
-
-				if (!WorldItemDefinition)
-					continue;
-
-				auto ShouldBeDropped = WorldItemDefinition->CanBeDropped(); // WorldItemDefinition->ShouldDropOnDeath();
-
-				// LOG_INFO(LogDev, "[{}/{}] ShouldBeDropped {}", i, ItemInstances.Num(), ShouldBeDropped);
-
-				if (!ShouldBeDropped)
-					continue;
-
-				PickupCreateData CreateData;
-				CreateData.PawnOwner = DeadPawn;
-				CreateData.bToss = true;
-				CreateData.ItemEntry = ItemEntry;
-				CreateData.SourceType = EFortPickupSourceTypeFlag::GetPlayerValue();
-				CreateData.Source = EFortPickupSpawnSource::GetPlayerEliminationValue();
-				CreateData.SpawnLocation = DeathLocation;
-
-				AFortPickup::SpawnPickup(CreateData);
-
-				GuidAndCountsToRemove.push_back({ ItemEntry->GetItemGuid(), ItemEntry->GetCount() });
-				// WorldInventory->RemoveItem(ItemEntry->GetItemGuid(), nullptr, ItemEntry->GetCount());
-			}
-
-			for (auto& Pair : GuidAndCountsToRemove)
-			{
-				WorldInventory->RemoveItem(Pair.first, nullptr, Pair.second, true);
-			}
-
-			WorldInventory->Update();
-		}
-	}
-
 	if (!bIsRespawningAllowed)
 	{
+		bool bDropInventory = true;
+
+		LoopMutators([&](AFortAthenaMutator* Mutator)
+			{
+				if (auto FortAthenaMutator_InventoryOverride = Cast<AFortAthenaMutator_InventoryOverride>(Mutator))
+				{
+					if (FortAthenaMutator_InventoryOverride->GetDropAllItemsOverride(DeadPlayerState->GetTeamIndex()) == EAthenaLootDropOverride::ForceKeep)
+					{
+						bDropInventory = false;
+					}
+				}
+			}
+		);
+
+		if (bDropInventory)
+		{
+			auto WorldInventory = PlayerController->GetWorldInventory();
+
+			if (WorldInventory)
+			{
+				auto& ItemInstances = WorldInventory->GetItemList().GetItemInstances();
+
+				std::vector<std::pair<FGuid, int>> GuidAndCountsToRemove;
+
+				for (int i = 0; i < ItemInstances.Num(); ++i)
+				{
+					auto ItemInstance = ItemInstances.at(i);
+
+					// LOG_INFO(LogDev, "[{}/{}] CurrentItemInstance {}", i, ItemInstances.Num(), __int64(ItemInstance));
+
+					if (!ItemInstance)
+						continue;
+
+					auto ItemEntry = ItemInstance->GetItemEntry();
+					auto WorldItemDefinition = Cast<UFortWorldItemDefinition>(ItemEntry->GetItemDefinition());
+
+					// LOG_INFO(LogDev, "[{}/{}] WorldItemDefinition {}", i, ItemInstances.Num(), WorldItemDefinition ? WorldItemDefinition->GetFullName() : "InvalidObject");
+
+					if (!WorldItemDefinition)
+						continue;
+
+					auto ShouldBeDropped = WorldItemDefinition->CanBeDropped(); // WorldItemDefinition->ShouldDropOnDeath();
+
+					// LOG_INFO(LogDev, "[{}/{}] ShouldBeDropped {}", i, ItemInstances.Num(), ShouldBeDropped);
+
+					if (!ShouldBeDropped)
+						continue;
+
+					PickupCreateData CreateData;
+					CreateData.ItemEntry = ItemEntry;
+					CreateData.SourceType = EFortPickupSourceTypeFlag::GetPlayerValue();
+					CreateData.Source = EFortPickupSpawnSource::GetPlayerEliminationValue();
+					CreateData.SpawnLocation = DeathLocation;
+
+					AFortPickup::SpawnPickup(CreateData);
+
+					GuidAndCountsToRemove.push_back({ ItemEntry->GetItemGuid(), ItemEntry->GetCount() });
+					// WorldInventory->RemoveItem(ItemEntry->GetItemGuid(), nullptr, ItemEntry->GetCount());
+				}
+
+				for (auto& Pair : GuidAndCountsToRemove)
+				{
+					WorldInventory->RemoveItem(Pair.first, nullptr, Pair.second, true);
+				}
+
+				WorldInventory->Update();
+			}
+		}
+
 		auto GameMode = Cast<AFortGameModeAthena>(GetWorld()->GetGameMode());
 
 		LOG_INFO(LogDev, "PlayersLeft: {} IsDBNO: {}", GameState->GetPlayersLeft(), DeadPawn->IsDBNO());
@@ -1580,6 +1521,20 @@ void AFortPlayerController::ClientOnPawnDiedHook(AFortPlayerController* PlayerCo
 
 					/*
 
+					STATS:
+
+					Note: This isn't the exact order relative to other functions.
+
+					ClientSendMatchStatsForPlayer
+					ClientSendTeamStatsForPlayer
+					ClientSendEndBattleRoyaleMatchForPlayer
+
+					*/
+
+					// FAthenaMatchStats.Stats[ERewardSource] // hmm
+
+					/*
+
 					// We need to check if their entire team is dead then I think we send it????
 
 					auto DeadControllerAthena = Cast<AFortPlayerControllerAthena>(PlayerController);
@@ -1606,20 +1561,15 @@ void AFortPlayerController::ClientOnPawnDiedHook(AFortPlayerController* PlayerCo
 				}
 
 				// LOG_INFO(LogDev, "KillerPlayerState->Place: {}", KillerPlayerState ? KillerPlayerState->GetPlace() : -1);
-
-				LOG_INFO(LogDev, "TeamsLeft: {}", GameState->GetTeamsLeft()); // Important for launcher don't remove!
 			}
-		}
 
-		if (Fortnite_Version < 6) // Spectating (is this the actual build or is it like 6.10 when they added it auto).
-		{
-			if (GameState->GetGamePhase() > EAthenaGamePhase::Warmup)
+			if (Fortnite_Version < 6) // Spectating (is this the actual build or is it like 6.10 when they added it auto).
 			{
 				static auto bAllowSpectateAfterDeathOffset = GameMode->GetOffset("bAllowSpectateAfterDeath");
+
 				bool bAllowSpectate = GameMode->Get<bool>(bAllowSpectateAfterDeathOffset);
 
 				LOG_INFO(LogDev, "bAllowSpectate: {}", bAllowSpectate);
-
 				if (bAllowSpectate)
 				{
 					LOG_INFO(LogDev, "Starting Spectating!");
@@ -1627,19 +1577,14 @@ void AFortPlayerController::ClientOnPawnDiedHook(AFortPlayerController* PlayerCo
 					static auto PlayerToSpectateOnDeathOffset = PlayerController->GetOffset("PlayerToSpectateOnDeath");
 					PlayerController->Get<APawn*>(PlayerToSpectateOnDeathOffset) = KillerPawn;
 
-					UKismetSystemLibrary::K2_SetTimer(PlayerController, L"SpectateOnDeath", 5.f, false); // Soo proper its scary
+					CreateThread(0, 0, SpectateThread, (LPVOID)PlayerController, 0, 0);
 				}
 			}
 		}
 
-		if (Fortnite_Version >= 15) // dk if this is correct
+		if (Globals::bAutoRestart)
 		{
-			PlayerController->GetStateName() = UKismetStringLibrary::Conv_StringToName(L"Spectating");
-		}
-
-		if (IsRestartingSupported() && Globals::bAutoRestart && !bIsInAutoRestart)
-		{
-			// wht
+			// wtf
 
 			if (GameState->GetGamePhase() > EAthenaGamePhase::Warmup)
 			{
@@ -1661,9 +1606,13 @@ void AFortPlayerController::ClientOnPawnDiedHook(AFortPlayerController* PlayerCo
 				// LOG_INFO(LogDev, "bDidSomeoneWin: {}", bDidSomeoneWin);
 
 				// if (GameState->GetGamePhase() == EAthenaGamePhase::EndGame)
-				if (bDidSomeoneWin)
+				if (bDidSomeoneWin && GameState->GetGamePhase() > EAthenaGamePhase::SafeZones && !Globals::bEnded)
 				{
-					CreateThread(0, 0, RestartThread, 0, 0, 0);
+					Globals::bEnded = true;
+					if (Globals::shouldKillGame)
+					{
+						CreateThread(0, 0, KillGameThread, 0, 0, 0);
+					}
 				}
 			}
 		}
@@ -1681,8 +1630,6 @@ void AFortPlayerController::ClientOnPawnDiedHook(AFortPlayerController* PlayerCo
 
 void AFortPlayerController::ServerBeginEditingBuildingActorHook(AFortPlayerController* PlayerController, ABuildingSMActor* BuildingActorToEdit)
 {
-	DEBUG_LOG_INFO(LogDev, "\n[Begin START]!");
-
 	if (!BuildingActorToEdit || !BuildingActorToEdit->IsPlayerPlaced()) // We need more checks.
 		return;
 
@@ -1695,6 +1642,8 @@ void AFortPlayerController::ServerBeginEditingBuildingActorHook(AFortPlayerContr
 
 	if (!PlayerState)
 		return;
+
+	BuildingActorToEdit->SetEditingPlayer(PlayerState);
 
 	auto WorldInventory = PlayerController->GetWorldInventory();
 
@@ -1711,23 +1660,16 @@ void AFortPlayerController::ServerBeginEditingBuildingActorHook(AFortPlayerContr
 	Pawn->EquipWeaponDefinition(EditToolDef, EditToolInstance->GetItemEntry()->GetItemGuid());
 
 	auto EditTool = Cast<AFortWeap_EditingTool>(Pawn->GetCurrentWeapon());
-	DEBUG_LOG_INFO(LogDev, "[Begin {}] EditTool: {}!", BuildingActorToEdit->GetFullName(), __int64(EditTool));
 
 	if (!EditTool)
 		return;
 
 	EditTool->GetEditActor() = BuildingActorToEdit;
 	EditTool->OnRep_EditActor();
-
-	BuildingActorToEdit->SetEditingPlayer(PlayerState);
-
-	DEBUG_LOG_INFO(LogDev, "[Begin] Updating Editing player to: {}!", __int64(PlayerState));
 }
 
 void AFortPlayerController::ServerEditBuildingActorHook(UObject* Context, FFrame& Stack, void* Ret)
 {
-	DEBUG_LOG_INFO(LogDev, "\n[Edit START]!");
-
 	auto PlayerController = (AFortPlayerController*)Context;
 
 	auto PlayerState = (AFortPlayerState*)PlayerController->GetPlayerState();
@@ -1756,8 +1698,7 @@ void AFortPlayerController::ServerEditBuildingActorHook(UObject* Context, FFrame
 	// if (!PlayerState || PlayerState->GetTeamIndex() != BuildingActorToEdit->GetTeamIndex()) 
 		//return ServerEditBuildingActorOriginal(Context, Frame, Ret);
 
-	// 	if (Fortnite_Version < 16)
-	// BuildingActorToEdit->SetEditingPlayer(nullptr);
+	BuildingActorToEdit->SetEditingPlayer(nullptr);
 
 	static ABuildingSMActor* (*BuildingSMActorReplaceBuildingActor)(ABuildingSMActor*, __int64, UClass*, int, int, uint8_t, AFortPlayerController*) =
 		decltype(BuildingSMActorReplaceBuildingActor)(Addresses::ReplaceBuildingActor);
@@ -1768,43 +1709,13 @@ void AFortPlayerController::ServerEditBuildingActorHook(UObject* Context, FFrame
 		BuildingActor->SetPlayerPlaced(true);
 	}
 
-	if (Fortnite_Version >= 11)
-	{
-		BuildingActorToEdit->SetEditingPlayer(nullptr);
-		auto Pawn = PlayerController->GetMyFortPawn();
-
-		if (!Pawn)
-			return ServerEditBuildingActorOriginal(Context, Stack, Ret);
-
-		static auto EditToolDef = FindObject<UFortWeaponItemDefinition>(L"/Game/Items/Weapons/BuildingTools/EditTool.EditTool");
-
-		auto WorldInventory = PlayerController->GetWorldInventory();
-
-		if (!WorldInventory)
-			return ServerEditBuildingActorOriginal(Context, Stack, Ret);
-
-		auto EditToolInstance = WorldInventory->FindItemInstance(EditToolDef);
-
-		if (!EditToolInstance)
-			return ServerEditBuildingActorOriginal(Context, Stack, Ret);
-
-		Pawn->EquipWeaponDefinition(EditToolDef, EditToolInstance->GetItemEntry()->GetItemGuid());
-
-		auto EditTool = Cast<AFortWeap_EditingTool>(Pawn->GetCurrentWeapon());
-		DEBUG_LOG_INFO(LogDev, "[Edit] New Equipped EditTool: {}", __int64(EditTool));
-
-		if (EditTool)
-		{
-			EditTool->GetEditActor() = nullptr;
-		}
-	}
+	// we should do more things here
 
 	return ServerEditBuildingActorOriginal(Context, Stack, Ret);
 }
 
 void AFortPlayerController::ServerEndEditingBuildingActorHook(AFortPlayerController* PlayerController, ABuildingSMActor* BuildingActorToStopEditing)
 {
-	DEBUG_LOG_INFO(LogDev, "\n[End START] [{}] ServerEndEditingBuildingActorHook EditiNgplAyer: {}!", BuildingActorToStopEditing ? BuildingActorToStopEditing->GetName() : "NULL", BuildingActorToStopEditing ? __int64(BuildingActorToStopEditing->GetEditingPlayer()) : -1);
 	auto Pawn = PlayerController->GetMyFortPawn();
 
 	if (!BuildingActorToStopEditing || !Pawn
@@ -1826,19 +1737,16 @@ void AFortPlayerController::ServerEndEditingBuildingActorHook(AFortPlayerControl
 	if (!EditToolInstance)
 		return;
 
-	auto OldWep = Pawn->GetCurrentWeapon();
-	DEBUG_LOG_INFO(LogDev, "[End] EditTool Equipped BEFORE: {} (name: {})", __int64(Cast<AFortWeap_EditingTool>(OldWep)), OldWep ? OldWep->GetFullName() : "NULL");
-
-	if (Fortnite_Version >= 11)
-	{
-		Pawn->EquipWeaponDefinition(EditToolDef, EditToolInstance->GetItemEntry()->GetItemGuid());
-	}
+	Pawn->EquipWeaponDefinition(EditToolDef, EditToolInstance->GetItemEntry()->GetItemGuid());
 
 	auto EditTool = Cast<AFortWeap_EditingTool>(Pawn->GetCurrentWeapon());
-	DEBUG_LOG_INFO(LogDev, "[End] EditTool Equipped AFTER: {}", __int64(EditTool));
+
+	BuildingActorToStopEditing->GetEditingPlayer() = nullptr;
+	// BuildingActorToStopEditing->OnRep_EditingPlayer();
 
 	if (EditTool)
 	{
 		EditTool->GetEditActor() = nullptr;
+		EditTool->OnRep_EditActor();
 	}
 }

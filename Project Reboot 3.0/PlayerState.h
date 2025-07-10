@@ -9,6 +9,7 @@ class APlayerState : public AActor
 public:
 	FString& GetSavedNetworkAddress();
 	FString GetPlayerName();
+	std::string GetPlayerNameString();
 	int& GetPlayerID(); // for future me to deal with (this is a short on some versions).
 	bool IsBot();
 	void SetIsBot(bool NewValue);

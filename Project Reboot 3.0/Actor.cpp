@@ -65,7 +65,7 @@ AActor* AActor::GetOwner()
 
 void AActor::K2_DestroyActor()
 {
-	static auto DestroyActorFn = FindObject<UFunction>(L"/Script/Engine.Actor.K2_DestroyActor");
+	static auto DestroyActorFn = FindObject<UFunction>("/Script/Engine.Actor.K2_DestroyActor");
 
 	this->ProcessEvent(DestroyActorFn);
 }
@@ -203,28 +203,6 @@ bool AActor::IsNetStartupActor()
 bool AActor::IsPendingKillPending()
 {
 	return IsActorBeingDestroyed() || !IsValidChecked(this);
-}
-
-UObject* AActor::AddComponentByClass(UClass* Class)
-{
-	struct
-	{
-		UClass* Class;
-		bool bManualAttachment;
-		FTransform RelativeTransform;
-		bool bDeferredFinish;
-		UObject* ReturnValue;
-	} params;
-	params.Class = Class;
-	params.bManualAttachment = false;
-	params.RelativeTransform = FTransform();
-	params.bDeferredFinish = true;
-
-	static UFunction* AddComp = FindObject<UFunction>("/Script/Engine.Actor:AddComponentByClass");
-
-	this->ProcessEvent(AddComp, &params);
-
-	return params.ReturnValue;
 }
 
 float& AActor::GetNetUpdateFrequency()

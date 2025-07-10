@@ -7,7 +7,7 @@
 #include "GameplayStatics.h"
 #include "KismetMathLibrary.h"
 #include <random>
-#include "Package.h"
+#include "Package.h"S
 #include "AssertionMacros.h"
 #include "bots.h"
 #include "gui.h"
@@ -31,24 +31,6 @@ void UNetDriver::RemoveNetworkActor(AActor* Actor)
 
 void UNetDriver::TickFlushHook(UNetDriver* NetDriver)
 {
-	if (bShouldDestroyAllPlayerBuilds) // i hate this
-	{
-		auto AllBuildingSMActors = UGameplayStatics::GetAllActorsOfClass(GetWorld(), ABuildingSMActor::StaticClass());
-
-		for (int i = 0; i < AllBuildingSMActors.Num(); i++)
-		{
-			auto CurrentBuildingSMActor = (ABuildingSMActor*)AllBuildingSMActors.at(i);
-
-			if (CurrentBuildingSMActor->IsDestroyed() || CurrentBuildingSMActor->IsActorBeingDestroyed() || !CurrentBuildingSMActor->IsPlayerPlaced()) continue;
-
-			CurrentBuildingSMActor->SilentDie();
-			// CurrentBuildingSMActor->K2_DestroyActor();
-		}
-
-		AllBuildingSMActors.Free();
-		bShouldDestroyAllPlayerBuilds = false;
-	}
-	
 	/* if (bEnableBotTick)
 	{
 		Bots::Tick();
@@ -56,33 +38,69 @@ void UNetDriver::TickFlushHook(UNetDriver* NetDriver)
 
 	if (Globals::bStartedListening)
 	{
-		if (!Globals::bShouldUseReplicationGraph)
+		if (Globals::bGetUsernames)
+		{
+			static auto World_NetDriverOffset = GetWorld()->GetOffset("NetDriver");
+			auto WorldNetDriver = GetWorld()->Get<UNetDriver*>(World_NetDriverOffset);
+			auto& ClientConnections = WorldNetDriver->GetClientConnections();
+
+			if (ClientConnections.Num() == 0)
+				return;
+
+			Globals::gameThreadLock.lock();
+			Globals::playerUsernames.clear();
+			Globals::playerUsernames.reserve(ClientConnections.Num());
+
+			for (int i = 0; i < ClientConnections.Num(); ++i)
+			{
+				auto ClientConnection = ClientConnections.at(i);
+				static auto PlayerControllerOffset = ClientConnections.at(i)->GetOffset("PlayerController");
+				auto FortPC = Cast<AFortPlayerControllerAthena>(ClientConnections.at(i)->Get(PlayerControllerOffset));
+
+				if (!FortPC)
+					continue;
+
+				if (!Globals::bAllowRebootPlayer && FortPC->GetPlayerState()->GetPlayerNameString().starts_with("reboot_"))
+				{
+					FortPC->ClientReturnToMainMenu(L"Sorry but you cannot join with this client.");
+					continue;
+				}
+					
+				if (Globals::bAllowRebootPlayer && Globals::bRemoveRebootFromPlayerName && FortPC->GetPlayerState()->GetPlayerNameString().starts_with("reboot_"))
+				{
+					std::string Name = FortPC->GetPlayerState()->GetPlayerNameString();
+					std::string target = "reboot_";
+					Name.replace(Name.find("reboot_"), target.length(), "");
+					FString NewName = Name;
+					FortPC->ServerChangeName(NewName);
+					Globals::playerUsernames.insert({ FortPC, Name });
+					continue;
+				}
+					
+
+				Globals::playerUsernames.insert({ FortPC, FortPC->GetPlayerState()->GetPlayerNameString() });
+			}
+
+			Globals::gameThreadLock.unlock();
+		}
+
+
+		static auto ReplicationDriverOffset = NetDriver->GetOffset("ReplicationDriver", false);
+
+		// if (ReplicationDriverOffset == -1)
+		if (ReplicationDriverOffset == -1 || Fortnite_Version >= 20)
 		{
 			NetDriver->ServerReplicateActors();
 		}
 		else
 		{
-			static auto ReplicationDriverOffset = NetDriver->GetOffset("ReplicationDriver"/*, false */);
-
 			if (auto ReplicationDriver = NetDriver->Get(ReplicationDriverOffset))
-			{
 				reinterpret_cast<void(*)(UObject*)>(ReplicationDriver->VFTable[Offsets::ServerReplicateActors])(ReplicationDriver);
-			}
-			else
-			{
-				// LOG_INFO(LogDev, "ReplicationDriver is nul!!?1//33/221/4/124/123"); // 3.3 MOMENT
-			}
 		}
 	}
 
 	return TickFlushOriginal(NetDriver);
 }
-
-enum class EChannelCreateFlags : uint32_t
-{
-	None = (1 << 0),
-	OpenedLocally = (1 << 1)
-};
 
 int32 ServerReplicateActors_PrepConnections(UNetDriver* NetDriver)
 {
@@ -456,126 +474,7 @@ bool UNetDriver::IsLevelInitializedForActor(const AActor* InActor, const UNetCon
 
 	const bool bCorrectWorld = (bFirstWorldCheck && InConnection->ClientHasInitializedLevelFor(InActor));
 	const bool bIsConnectionPC = (InActor == InConnection->GetPlayerController());
-	// LOG_INFO(LogDev, "Finished call {}", bCorrectWorld || bIsConnectionPC);
 	return bCorrectWorld || bIsConnectionPC;
-}
-
-TMap<FNetworkGUID, FActorDestructionInfo>* GetDestroyedStartupOrDormantActors(UNetDriver* Driver)
-{
-	static int off = Fortnite_Version == 1.11 ? 0x228 : 0; // 0x240
-
-	return off == 0 ? nullptr : (TMap<FNetworkGUID, FActorDestructionInfo>*)(__int64(Driver) + off);
-}
-
-TSet<FNetworkGUID>* GetDestroyedStartupOrDormantActors(UNetConnection* NetConnection)
-{
-	static int off = Fortnite_Version == 1.11 ? 0x33678 : 0;
-
-	return off == 0 ? nullptr : (TSet<FNetworkGUID>*)(__int64(NetConnection) + off);
-}
-
-using FArchive = void;
-
-bool IsError(FArchive* Ar)
-{
-	return false;
-}
-
-void SerializeChecksum(FArchive* Ar, uint32 x, bool ErrorOK)
-{
-	/*
-	if (Ar->IsLoading())
-	{
-		uint32 Magic = 0;
-		Ar << Magic;
-		if ((!ErrorOK || !IsError(Ar)) 
-			// && !ensure(Magic == x)
-			)
-		{
-			// UE_LOG(LogCoreNet, Warning, TEXT("%d == %d"), Magic, x);
-		}
-
-	}
-	else
-	{
-		uint32 Magic = x;
-		Ar << Magic;
-	}
-	*/
-}
-
-#define NET_CHECKSUM(Ser) \
-{ \
-	SerializeChecksum(Ser,0xE282FA84, false); \
-}
-
-struct FPacketIdRange
-{
-	FPacketIdRange(int32 _First, int32 _Last) : First(_First), Last(_Last) { }
-	FPacketIdRange(int32 PacketId) : First(PacketId), Last(PacketId) { }
-	FPacketIdRange() : First(INDEX_NONE), Last(INDEX_NONE) { }
-	int32 First;
-	int32 Last;
-
-	bool InRange(int32 PacketId) const
-	{
-		return (First <= PacketId && PacketId <= Last);
-	}
-};
-
-void SetChannelActorForDestroy(UActorChannel* Channel, FActorDestructionInfo* DestructInfo)
-{
-	auto Connection = Channel->GetConnection();
-
-	if (
-		true
-		// && !Channel->IsClosing()
-			// && (Connection->State == USOCK_Open || Connection->State == USOCK_Pending)
-		)
-	{
-
-		// Send a close notify, and wait for ack.
-		struct FOutBunch
-		{
-			char pad[0x600]; // idk real size
-		};
-
-		FOutBunch CloseBunch{};
-		FOutBunch(*ConstructorFOutBunch)(FOutBunch*, UChannel* , bool) = decltype(ConstructorFOutBunch)(__int64(GetModuleHandleW(0)) + 0x194E800);
-		ConstructorFOutBunch(&CloseBunch, Channel, 1);
-		// check(!CloseBunch.IsError());
-		// check(CloseBunch.bClose);
-
-		// https://imgur.com/a/EtKFkrD
-
-		*(bool*)(__int64(&CloseBunch) + 0xE8) = 1;
-		*(bool*)(__int64(&CloseBunch) + 0xE6) = 0;
-
-		// Serialize DestructInfo
-		// NET_CHECKSUM(CloseBunch); // This is to mirror the Checksum in UPackageMapClient::SerializeNewActor
-
-		using UPackageMap = UObject;
-
-		reinterpret_cast<bool(*)(UPackageMap*, FArchive * Ar, UObject * InOuter,FNetworkGUID NetGUID, FString ObjName)>(Connection->GetPackageMap()->VFTable[0x238 / 8])(Connection->GetPackageMap(), &CloseBunch, DestructInfo->ObjOuter.Get(), DestructInfo->NetGUID, DestructInfo->PathName);
-
-		// UE_LOG(LogNetTraffic, Log, TEXT("SetChannelActorForDestroy: Channel %d. NetGUID <%s> Path: %s. Bits: %d"), ChIndex, *DestructInfo->NetGUID.ToString(), *DestructInfo->PathName, CloseBunch.GetNumBits());
-		// UE_LOG(LogNetDormancy, Verbose, TEXT("SetChannelActorForDestroy: Channel %d. NetGUID <%s> Path: %s. Bits: %d"), ChIndex, *DestructInfo->NetGUID.ToString(), *DestructInfo->PathName, CloseBunch.GetNumBits());
-
-		// 0x196E9C0
-		reinterpret_cast<FPacketIdRange(*)(UActorChannel*, FOutBunch*, bool)>(Channel->VFTable[0x288 / 8])(Channel, &CloseBunch, false);
-	}
-}
-
-enum ESetChannelActorFlags
-{
-	None = 0,
-	SkipReplicatorCreation = (1 << 0),
-	SkipMarkActive = (1 << 1),
-};
-
-TSet<FName>* GetClientVisibleLevelNames(UNetConnection* NetConnection)
-{
-	return (TSet<FName>*)(__int64(NetConnection) + 0x336C8);
 }
 
 int32 UNetDriver::ServerReplicateActors()
@@ -617,12 +516,6 @@ int32 UNetDriver::ServerReplicateActors()
 
 	// LOG_INFO(LogReplication, "Considering {} actors.", ConsiderList.size());
 
-	static UChannel* (*CreateChannel)(UNetConnection*, int, bool, int32_t) = decltype(CreateChannel)(Addresses::CreateChannel);
-	static __int64 (*ReplicateActor)(UActorChannel*) = decltype(ReplicateActor)(Addresses::ReplicateActor);
-	static UObject* (*CreateChannelByName)(UNetConnection * Connection, FName * ChName, EChannelCreateFlags CreateFlags, int32_t ChannelIndex) = decltype(CreateChannelByName)(Addresses::CreateChannel);
-	static __int64 (*SetChannelActor)(UActorChannel*, AActor*) = decltype(SetChannelActor)(Addresses::SetChannelActor);
-	static __int64 (*SetChannelActor2)(UActorChannel*, AActor*, ESetChannelActorFlags) = decltype(SetChannelActor2)(Addresses::SetChannelActor);
-
 	for (int32 i = 0; i < this->GetClientConnections().Num(); i++)
 	{
 		UNetConnection* Connection = this->GetClientConnections().at(i);
@@ -658,87 +551,6 @@ int32 UNetDriver::ServerReplicateActors()
 			Connection->GetSentTemporaries().at(j)->GetNetTag() = GetNetTag();
 		} */
 
-		std::vector<FActorDestructionInfo*> DeletionEntries;
-
-#if 0
-		auto ConnectionDestroyedStartupOrDormantActors = GetDestroyedStartupOrDormantActors(Connection);
-
-		if (ConnectionDestroyedStartupOrDormantActors)
-		{
-			auto DriverDestroyedStartupOrDormantActors = GetDestroyedStartupOrDormantActors(this);
-
-			if (DriverDestroyedStartupOrDormantActors)
-			{
-				for (FNetworkGUID& ConnectionIt : *ConnectionDestroyedStartupOrDormantActors)
-				{
-					FActorDestructionInfo* DInfo = nullptr;
-
-					for (TPair<FNetworkGUID, FActorDestructionInfo>& DriverIt : *DriverDestroyedStartupOrDormantActors)
-					{
-						if (DriverIt.First == ConnectionIt)
-						{
-							DInfo = &DriverIt.Second;
-							break;
-						}
-					}
-
-					if (!DInfo) continue; // should never happen
-
-					DeletionEntries.push_back(DInfo);
-				}
-			}
-		}
-
-		LOG_INFO(LogDev, "DeletionEntries: {}", DeletionEntries.size());
-#endif
-
-		for (FActorDestructionInfo* DeletionEntry : DeletionEntries)
-		{
-			LOG_INFO(LogDev, "AA: {}", DeletionEntry->PathName.Data.Data ? DeletionEntry->PathName.ToString() : "Null");
-
-			if (DeletionEntry->StreamingLevelName != -1)
-			{
-				auto ClientVisibleLevelNames = GetClientVisibleLevelNames(Connection);
-
-				bool bFound = false;
-
-				for (FName& ClientVisibleLevelName : *ClientVisibleLevelNames)
-				{
-					if (ClientVisibleLevelName == DeletionEntry->StreamingLevelName)
-					{
-						bFound = true;
-						break;
-					}
-				}
-
-				if (!bFound)
-					continue;
-			}
-
-			UActorChannel* Channel = nullptr;
-
-			if (Engine_Version >= 422)
-			{
-				FString ActorStr = L"Actor";
-				FName ActorName = UKismetStringLibrary::Conv_StringToName(ActorStr);
-
-				int ChannelIndex = -1; // 4294967295
-				Channel = (UActorChannel*)CreateChannelByName(Connection, &ActorName, EChannelCreateFlags::OpenedLocally, ChannelIndex);
-			}
-			else
-			{
-				Channel = (UActorChannel*)CreateChannel(Connection, 2, true, -1);
-			}
-
-			if (Channel)
-			{
-				// FinalRelevantCount++;
-
-				SetChannelActorForDestroy(Channel, DeletionEntry);						   // Send a close bunch on the new channel
-				GetDestroyedStartupOrDormantActors(Connection)->Remove(DeletionEntry->NetGUID); // Remove from connections to-be-destroyed list (close bunch of reliable, so it will make it there)
-			}
-		}
-
 		for (auto& ActorInfo : ConsiderList)
 		{
 			if (!ActorInfo || !ActorInfo->Actor)
@@ -760,8 +572,10 @@ int32 UNetDriver::ServerReplicateActors()
 
 			if (!Channel)
 			{
+				// if (!IsLevelInitializedForActor(Actor, Connection))
 				if (!bLevelInitializedForActor)
 				{
+					// If the level this actor belongs to isn't loaded on client, don't bother sending
 					continue;
 				}
 
@@ -807,6 +621,16 @@ int32 UNetDriver::ServerReplicateActors()
 				}
 			}
 
+			enum class EChannelCreateFlags : uint32_t
+			{
+				None = (1 << 0),
+				OpenedLocally = (1 << 1)
+			};
+
+			static UChannel* (*CreateChannel)(UNetConnection*, int, bool, int32_t) = decltype(CreateChannel)(Addresses::CreateChannel);
+			static __int64 (*ReplicateActor)(UActorChannel*) = decltype(ReplicateActor)(Addresses::ReplicateActor);
+			static UObject* (*CreateChannelByName)(UNetConnection* Connection, FName* ChName, EChannelCreateFlags CreateFlags, int32_t ChannelIndex) = decltype(CreateChannelByName)(Addresses::CreateChannel);
+			static __int64 (*SetChannelActor)(UActorChannel*, AActor*) = decltype(SetChannelActor)(Addresses::SetChannelActor);
 
 			if (!Channel)
 			{
@@ -830,10 +654,7 @@ int32 UNetDriver::ServerReplicateActors()
 
 					if (Channel)
 					{
-						if (Engine_Version >= 500)
-							SetChannelActor(Channel, Actor);
-						else
-							SetChannelActor2(Channel, Actor, ESetChannelActorFlags::None);
+						SetChannelActor(Channel, Actor);
 					}
 				}
 

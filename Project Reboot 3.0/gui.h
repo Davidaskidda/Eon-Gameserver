@@ -6,7 +6,7 @@
 
 #include <Windows.h>
 #include <dxgi.h>
-// #include <d3d11.h>
+#include <d3d11.h>
 #include <d3d9.h>
 
 #include <ImGui/imgui.h>
@@ -28,7 +28,6 @@
 #include "Fonts/ruda-bold.h"
 #include "Vector.h"
 #include "reboot.h"
-#include "botnames.h"
 #include "FortGameModeAthena.h"
 #include "UnrealString.h"
 #include "KismetTextLibrary.h"
@@ -36,7 +35,6 @@
 #include "GameplayStatics.h"
 #include "Text.h"
 #include <Images/reboot_icon.h>
-#include "hooking.h"
 #include "FortGadgetItemDefinition.h"
 #include "FortWeaponItemDefinition.h"
 #include "events.h"
@@ -44,24 +42,24 @@
 #include "BGA.h"
 #include "vendingmachine.h"
 #include "die.h"
-#include "calendar.h"
-#include "KismetRenderingLibrary.h"
+#include "GameSession.h"
+#include "discord.h"
 
 #define GAME_TAB 1
 #define PLAYERS_TAB 2
 #define GAMEMODE_TAB 3
 #define THANOS_TAB 4
 #define EVENT_TAB 5
-#define CALENDAR_TAB 6
-#define ZONE_TAB 7
-#define DUMP_TAB 8
-#define UNBAN_TAB 9
-#define FUN_TAB 10
-#define LATEGAME_TAB 11
-#define DEVELOPER_TAB 12
-#define DEBUGLOG_TAB 13
-#define SETTINGS_TAB 14
-#define CREDITS_TAB 15
+#define ZONE_TAB 6
+#define DUMP_TAB 7
+#define UNBAN_TAB 8
+#define FUN_TAB 9
+#define LATEGAME_TAB 10
+#define DEVELOPER_TAB 11
+#define DEBUGLOG_TAB 12
+#define SETTINGS_TAB 13
+#define CREDITS_TAB 14
+#define BOOSTED_EXTRA_TAB 15
 
 #define MAIN_PLAYERTAB 1
 #define INVENTORY_PLAYERTAB 2
@@ -70,31 +68,34 @@
 
 extern inline int StartReverseZonePhase = 7;
 extern inline int EndReverseZonePhase = 5;
-extern inline float StartingShield = 0;
+extern inline float StartingShield = Globals::StartingShield;
 extern inline bool bEnableReverseZone = false;
 extern inline int AmountOfPlayersWhenBusStart = 0; 
 extern inline bool bHandleDeath = true;
 extern inline bool bUseCustomMap = false;
 extern inline std::string CustomMapName = "";
 extern inline int AmountToSubtractIndex = 1;
-extern inline int SecondsUntilTravel = 5;
+extern inline int SecondsUntilTravel = 15;
 extern inline bool bSwitchedInitialLevel = false;
 extern inline bool bIsInAutoRestart = false;
 extern inline float AutoBusStartSeconds = 60;
 extern inline int NumRequiredPlayersToStart = 2;
-extern inline bool bDebugPrintLooting = false;
-extern inline bool bDebugPrintFloorLoot = false;
-extern inline bool bDebugPrintSwapping = false;
+extern inline bool bDebugPrintLooting = true; //debugging rn
+extern inline bool bDebugPrintFloorLoot = true; //debugging rn
+extern inline bool bDebugPrintSwapping = true; //debugging rn
 extern inline bool bEnableBotTick = false;
 extern inline bool bZoneReversing = false;
 extern inline bool bEnableCombinePickup = false;
 extern inline int AmountOfBotsToSpawn = 0;
-extern inline int WarmupRequiredPlayerCount = 1;
 extern inline bool bEnableRebooting = false;
-extern inline bool bEngineDebugLogs = false;
+extern inline bool bEngineDebugLogs = true; //debugging rn
 extern inline bool bStartedBus = false;
-extern inline bool bShouldDestroyAllPlayerBuilds = false;
-extern inline int AmountOfHealthSiphon = 0;
+extern inline int AmountOfHealthSiphon = 50;
+extern inline std::string KickReason = "";
+extern inline char NewName[256] = "";
+extern inline char cKickReason[256] = "";
+extern inline int Tick = 0;
+
 
 // THE BASE CODE IS FROM IMGUI GITHUB
 
@@ -114,15 +115,8 @@ static inline void SetIsLategame(bool Value)
 	StartingShield = Value ? 100 : 0;
 }
 
-static inline bool HasAnyCalendarModification()
-{
-	return Calendar::HasSnowModification() || Calendar::HasNYE() || std::floor(Fortnite_Version) == 13;
-}
-
 static inline void Restart() // todo move?
 {
-	InitBotNames();
-
 	FString LevelA = Engine_Version < 424
 		? L"open Athena_Terrain" : Engine_Version >= 500 ? Engine_Version >= 501
 		? L"open Asteria_Terrain"
@@ -330,25 +324,13 @@ static inline void StaticUI()
 
 	ImGui::InputInt("Shield/Health for siphon", &AmountOfHealthSiphon);
 
-	ImGui::Checkbox("Enable Developer Mode", &Globals::bDeveloperMode);
-
-	if (Globals::bDeveloperMode)
-	{
-		if (ImGui::Checkbox("Log ProcessEvent", &Globals::bLogProcessEvent))
-		{
-			// todo toggle hook
-			// this is lowkey highkey a race.. so i hope this below will fix ? idk im confused
-			UObject::ProcessEventOriginal = decltype(UObject::ProcessEventOriginal)(Addresses::ProcessEvent);
-			Hooking::MinHook::Hook((PVOID)Addresses::ProcessEvent, ProcessEventHook, (PVOID*)&UObject::ProcessEventOriginal);
-		}
-	}
-
+#ifndef PROD
+	ImGui::Checkbox("Log ProcessEvent", &Globals::bLogProcessEvent);
 	// ImGui::InputInt("Amount of bots to spawn", &AmountOfBotsToSpawn);
+#endif
 
 	ImGui::Checkbox("Infinite Ammo", &Globals::bInfiniteAmmo);
 	ImGui::Checkbox("Infinite Materials", &Globals::bInfiniteMaterials);
-	
-	ImGui::Checkbox("Private IPs are operator", &Globals::bPrivateIPsAreOperator);
 
 	ImGui::Checkbox("No MCP (Don't change unless you know what this is)", &Globals::bNoMCP);
 
@@ -381,88 +363,97 @@ static inline void MainTabs()
 			} */
 		}
 
-		if (false && ImGui::BeginTabItem("Gamemode"))
+		if (Globals::bStartedListening)
 		{
-			Tab = GAMEMODE_TAB;
-			PlayerTab = -1;
-			bInformationTab = false;
-			ImGui::EndTabItem();
-		}
-
-		// if (Events::HasEvent())
-		if (Globals::bGoingToPlayEvent)
-		{
-			if (ImGui::BeginTabItem(("Event")))
+			if (false && ImGui::BeginTabItem("Gamemode"))
 			{
-				Tab = EVENT_TAB;
+				Tab = GAMEMODE_TAB;
 				PlayerTab = -1;
 				bInformationTab = false;
 				ImGui::EndTabItem();
 			}
-		}
 
-		if (HasAnyCalendarModification() && ImGui::BeginTabItem("Calendar Events"))
-		{
-			Tab = CALENDAR_TAB;
-			PlayerTab = -1;
-			bInformationTab = false;
-			ImGui::EndTabItem();
-		}
+			if (ImGui::BeginTabItem(("Players")))
+			{
+				Tab = PLAYERS_TAB;
+				PlayerTab = -1;
+				bInformationTab = false;
+				ImGui::EndTabItem();
+			}
 
-		if (ImGui::BeginTabItem(("Zone")))
-		{
-			Tab = ZONE_TAB;
-			PlayerTab = -1;
-			bInformationTab = false;
-			ImGui::EndTabItem();
-		}
+			if (ImGui::BeginTabItem(("Boosted's Extra Stuff")))
+			{
+				Tab = BOOSTED_EXTRA_TAB;
+				PlayerTab = -1;
+				bInformationTab = false;
+				ImGui::EndTabItem();
+			}
 
-		if (ImGui::BeginTabItem("Dump"))
-		{
-			Tab = DUMP_TAB;
-			PlayerTab = -1;
-			bInformationTab = false;
-			ImGui::EndTabItem();
-		}
+			// if (Events::HasEvent())
+			if (Globals::bGoingToPlayEvent)
+			{
+				if (ImGui::BeginTabItem(("Event")))
+				{
+					Tab = EVENT_TAB;
+					PlayerTab = -1;
+					bInformationTab = false;
+					ImGui::EndTabItem();
+				}
+			}
 
-		if (ImGui::BeginTabItem("Fun"))
-		{
-			Tab = FUN_TAB;
-			PlayerTab = -1;
-			bInformationTab = false;
-			ImGui::EndTabItem();
-		}
+			if (ImGui::BeginTabItem(("Zone")))
+			{
+				Tab = ZONE_TAB;
+				PlayerTab = -1;
+				bInformationTab = false;
+				ImGui::EndTabItem();
+			}
 
-		if (Globals::bLateGame.load() && ImGui::BeginTabItem("Lategame"))
-		{
-			Tab = LATEGAME_TAB;
-			PlayerTab = -1;
-			bInformationTab = false;
-			ImGui::EndTabItem();
-		}
+			if (ImGui::BeginTabItem("Dump"))
+			{
+				Tab = DUMP_TAB;
+				PlayerTab = -1;
+				bInformationTab = false;
+				ImGui::EndTabItem();
+			}
+
+			if (ImGui::BeginTabItem("Fun"))
+			{
+				Tab = FUN_TAB;
+				PlayerTab = -1;
+				bInformationTab = false;
+				ImGui::EndTabItem();
+			}
+
+			if (Globals::bLateGame.load() && ImGui::BeginTabItem("Lategame"))
+			{
+				Tab = LATEGAME_TAB;
+				PlayerTab = -1;
+				bInformationTab = false;
+				ImGui::EndTabItem();
+			}
 
 #if 0
-		if (bannedStream.is_open() && ImGui::BeginTabItem("Unban")) // skunked
-		{
-			Tab = UNBAN_TAB;
-			PlayerTab = -1;
-			bInformationTab = false;
-			ImGui::EndTabItem();
-		}
+			if (bannedStream.is_open() && ImGui::BeginTabItem("Unban")) // skunked
+			{
+				Tab = UNBAN_TAB;
+				PlayerTab = -1;
+				bInformationTab = false;
+				ImGui::EndTabItem();
+			}
 #endif
 
-		/* if (ImGui::BeginTabItem(("Settings")))
-		{
-			Tab = SETTINGS_TAB;
-			PlayerTab = -1;
-			bInformationTab = false;
-			ImGui::EndTabItem();
-		} */
+			/* if (ImGui::BeginTabItem(("Settings")))
+			{
+				Tab = SETTINGS_TAB;
+				PlayerTab = -1;
+				bInformationTab = false;
+				ImGui::EndTabItem();
+			} */
 
-		// maybe a Replication Stats for >3.3?
+			// maybe a Replication Stats for >3.3?
 
-		if (Globals::bDeveloperMode)
-		{
+#ifndef PROD
 			if (ImGui::BeginTabItem("Developer"))
 			{
 				Tab = DEVELOPER_TAB;
@@ -478,18 +469,19 @@ static inline void MainTabs()
 				bInformationTab = false;
 				ImGui::EndTabItem();
 			}
-		}
+#endif
 
-		if (false && ImGui::BeginTabItem(("Credits")))
-		{
-			Tab = CREDITS_TAB;
-			PlayerTab = -1;
-			bInformationTab = false;
-			ImGui::EndTabItem();
-		}
+			if (false && ImGui::BeginTabItem(("Credits")))
+			{
+				Tab = CREDITS_TAB;
+				PlayerTab = -1;
+				bInformationTab = false;
+				ImGui::EndTabItem();
+			}
 
-		ImGui::EndTabBar();
-	}
+			ImGui::EndTabBar();
+		}
+		}
 }
 
 static inline void PlayerTabs()
@@ -523,6 +515,62 @@ static inline void PlayerTabs()
 		ImGui::EndTabBar();
 	}
 }
+
+static inline void ClearAllInv() {
+	static auto World_NetDriverOffset = GetWorld()->GetOffset("NetDriver");
+	auto WorldNetDriver = GetWorld()->Get<UNetDriver*>(World_NetDriverOffset);
+	auto& ClientConnections = WorldNetDriver->GetClientConnections();
+
+	for (int z = 0; z < ClientConnections.Num(); z++)
+	{
+		auto ClientConnection = ClientConnections.at(z);
+		auto FortPC = Cast<AFortPlayerController>(ClientConnection->GetPlayerController());
+
+		if (!FortPC)
+			continue;
+
+		auto WorldInventory = FortPC->GetWorldInventory();
+
+		if (!WorldInventory)
+			continue;
+
+		static auto FortEditToolItemDefinitionClass = FindObject<UClass>(L"/Script/FortniteGame.FortEditToolItemDefinition");
+		static auto FortBuildingItemDefinitionClass = FindObject<UClass>(L"/Script/FortniteGame.FortBuildingItemDefinition");
+		bool bCheckShouldBeDropped = true;
+		std::vector<std::pair<FGuid, int>> GuidsAndCountsToRemove;
+		const auto& ItemInstances = WorldInventory->GetItemList().GetItemInstances();
+		auto PickaxeInstance = WorldInventory->GetPickaxeInstance();
+
+		for (int i = 0; i < ItemInstances.Num(); ++i)
+		{
+			auto ItemInstance = ItemInstances.at(i);
+			const auto ItemDefinition = Cast<UFortWorldItemDefinition>(ItemInstance->GetItemEntry()->GetItemDefinition());
+
+			if (bCheckShouldBeDropped
+				? ItemDefinition->CanBeDropped()
+				: !ItemDefinition->IsA(FortBuildingItemDefinitionClass)
+				&& !ItemDefinition->IsA(FortEditToolItemDefinitionClass)
+				&& ItemInstance != PickaxeInstance
+				)
+			{
+				bool IsPrimary = IsPrimaryQuickbar(ItemDefinition);
+
+				if ((true && IsPrimary) || (true && !IsPrimary))
+				{
+					GuidsAndCountsToRemove.push_back({ ItemInstance->GetItemEntry()->GetItemGuid(), ItemInstance->GetItemEntry()->GetCount() });
+				}
+			}
+		}
+
+		for (auto& [Guid, Count] : GuidsAndCountsToRemove)
+		{
+			WorldInventory->RemoveItem(Guid, nullptr, Count, true);
+		}
+
+		WorldInventory->Update();
+	}
+}
+
 
 static inline DWORD WINAPI LateGameThread(LPVOID)
 {
@@ -583,7 +631,7 @@ static inline DWORD WINAPI LateGameThread(LPVOID)
 	const FVector ZoneCenterLocation = SafeZoneLocations.at(3);
 
 	FVector LocationToStartAircraft = ZoneCenterLocation;
-	LocationToStartAircraft.Z += 10000;
+	LocationToStartAircraft.Z += 20000;
 
 	auto Aircrafts = GetAircrafts();
 
@@ -672,6 +720,7 @@ static inline DWORD WINAPI LateGameThread(LPVOID)
 		static auto StoneItemData = FindObject<UFortItemDefinition>(L"/Game/Items/ResourcePickups/StoneItemData.StoneItemData");
 		static auto MetalItemData = FindObject<UFortItemDefinition>(L"/Game/Items/ResourcePickups/MetalItemData.MetalItemData");
 
+		static auto HandCanon = FindObject<UFortItemDefinition>(L"/Game/Athena/Items/Weapons/WID_Pistol_HandCannon_Athena_SR_Ore_T03.WID_Pistol_HandCannon_Athena_SR_Ore_T03");	
 		static auto Rifle = FindObject<UFortItemDefinition>(L"/Game/Athena/Items/Weapons/WID_Assault_AutoHigh_Athena_SR_Ore_T03.WID_Assault_AutoHigh_Athena_SR_Ore_T03");
 		static auto Shotgun = FindObject<UFortItemDefinition>(L"/Game/Athena/Items/Weapons/WID_Shotgun_Standard_Athena_SR_Ore_T03.WID_Shotgun_Standard_Athena_SR_Ore_T03")
 			? FindObject<UFortItemDefinition>(L"/Game/Athena/Items/Weapons/WID_Shotgun_Standard_Athena_SR_Ore_T03.WID_Shotgun_Standard_Athena_SR_Ore_T03")
@@ -683,6 +732,7 @@ static inline DWORD WINAPI LateGameThread(LPVOID)
 		static auto MiniShields = FindObject<UFortItemDefinition>(L"/Game/Athena/Items/Consumables/ShieldSmall/Athena_ShieldSmall.Athena_ShieldSmall");
 
 		static auto Shells = FindObject<UFortItemDefinition>(L"/Game/Athena/Items/Ammo/AthenaAmmoDataShells.AthenaAmmoDataShells");
+		static auto ChugSplash = FindObject<UFortItemDefinition>(L"/Game/Athena/Items/Consumables/ChillBronco/Athena_ChillBronco.Athena_ChillBronco");
 		static auto Medium = FindObject<UFortItemDefinition>(L"/Game/Athena/Items/Ammo/AthenaAmmoDataBulletsMedium.AthenaAmmoDataBulletsMedium");
 		static auto Light = FindObject<UFortItemDefinition>(L"/Game/Athena/Items/Ammo/AthenaAmmoDataBulletsLight.AthenaAmmoDataBulletsLight");
 		static auto Heavy = FindObject<UFortItemDefinition>(L"/Game/Athena/Items/Ammo/AthenaAmmoDataBulletsHeavy.AthenaAmmoDataBulletsHeavy");
@@ -692,18 +742,212 @@ static inline DWORD WINAPI LateGameThread(LPVOID)
 		WorldInventory->AddItem(MetalItemData, nullptr, 500);
 		WorldInventory->AddItem(Rifle, nullptr, 1);
 		WorldInventory->AddItem(Shotgun, nullptr, 1);
-		WorldInventory->AddItem(SMG, nullptr, 1);
-		WorldInventory->AddItem(MiniShields, nullptr, 6);
-		WorldInventory->AddItem(Shells, nullptr, 999);
-		WorldInventory->AddItem(Medium, nullptr, 999);
-		WorldInventory->AddItem(Light, nullptr, 999);
-		WorldInventory->AddItem(Heavy, nullptr, 999);
+		WorldInventory->AddItem(HandCanon, nullptr, 1);
+		//WorldInventory->AddItem(SMG, nullptr, 1);
+		WorldInventory->AddItem(MiniShields, nullptr, 3);
+		WorldInventory->AddItem(ChugSplash, nullptr, 6);
+		WorldInventory->AddItem(Shells, nullptr, 50);
+		WorldInventory->AddItem(Medium, nullptr, 250);
+		WorldInventory->AddItem(Light, nullptr, 250);
+		WorldInventory->AddItem(Heavy, nullptr, 30);
 
 		WorldInventory->Update();
+
+		//FortPC->GetMyFortPawn()->SetShield(100);
 	}
 
 	static auto SafeZonesStartTimeOffset = GameState->GetOffset("SafeZonesStartTime");
 	GameState->Get<float>(SafeZonesStartTimeOffset) = 0.001f;
+
+	return 0;
+}
+
+static inline DWORD WINAPI StartGameWithBusThread(LPVOID)
+{
+	auto GameMode = Cast<AFortGameModeAthena>(GetWorld()->GetGameMode());
+	auto GameState = Cast<AFortGameStateAthena>(GameMode->GetGameState());
+
+	float Duration = Globals::BusLaunchTime;
+	float EarlyDuration = Duration;
+
+	float TimeSeconds = UGameplayStatics::GetTimeSeconds(GetWorld());
+
+	static auto WarmupCountdownEndTimeOffset = GameState->GetOffset("WarmupCountdownEndTime");
+	static auto WarmupCountdownStartTimeOffset = GameState->GetOffset("WarmupCountdownStartTime");
+	static auto WarmupCountdownDurationOffset = GameMode->GetOffset("WarmupCountdownDuration");
+	static auto WarmupEarlyCountdownDurationOffset = GameMode->GetOffset("WarmupEarlyCountdownDuration");
+
+	GameState->Get<float>(WarmupCountdownEndTimeOffset) = TimeSeconds + Duration;
+	GameMode->Get<float>(WarmupCountdownDurationOffset) = Duration;
+
+	GameState->Get<float>(WarmupCountdownStartTimeOffset) = TimeSeconds;
+	GameMode->Get<float>(WarmupEarlyCountdownDurationOffset) = EarlyDuration;
+
+	LOG_INFO(LogDev, "Auto starting bus in {}.", Globals::BusLaunchTime);
+
+	Sleep(1000 * Globals::BusLaunchTime + 200);
+	if (bStartedBus)
+		return 0;
+	ClearAllInv();
+	bStartedBus = true;
+
+	AmountOfPlayersWhenBusStart = GameState->GetPlayersLeft();
+
+	if (Globals::bLateGame.load())
+	{
+		CreateThread(0, 0, LateGameThread, 0, 0, 0);
+	}
+	else
+	{
+		GameMode->StartAircraftPhase();
+	}
+
+	return 0;
+}
+static inline DWORD WINAPI UPTime(LPVOID)
+{
+	while (true)
+	{
+		Sleep(1000);
+		Globals::UPTime += 1;
+	}
+}
+
+static inline DWORD WINAPI tickTime(LPVOID)
+{
+	while (true)
+	{
+		Sleep(1000);
+		Globals::tickTime += 1;
+	}
+}
+
+
+static inline DWORD WINAPI ForceStart(LPVOID)
+{
+	auto GameMode = Cast<AFortGameModeAthena>(GetWorld()->GetGameMode());
+	auto GameState = Cast<AFortGameStateAthena>(GameMode->GetGameState());
+
+	float Duration = 10;
+	float EarlyDuration = Duration;
+
+	float TimeSeconds = UGameplayStatics::GetTimeSeconds(GetWorld());
+
+	static auto WarmupCountdownEndTimeOffset = GameState->GetOffset("WarmupCountdownEndTime");
+	static auto WarmupCountdownStartTimeOffset = GameState->GetOffset("WarmupCountdownStartTime");
+	static auto WarmupCountdownDurationOffset = GameMode->GetOffset("WarmupCountdownDuration");
+	static auto WarmupEarlyCountdownDurationOffset = GameMode->GetOffset("WarmupEarlyCountdownDuration");
+
+	GameState->Get<float>(WarmupCountdownEndTimeOffset) = TimeSeconds + Duration;
+	GameMode->Get<float>(WarmupCountdownDurationOffset) = Duration;
+
+	GameState->Get<float>(WarmupCountdownStartTimeOffset) = TimeSeconds;
+	GameMode->Get<float>(WarmupEarlyCountdownDurationOffset) = EarlyDuration;
+
+	LOG_INFO(LogDev, "Auto starting bus in {}.", AutoBusStartSeconds);
+
+	Sleep(1000 * Duration + 200);
+	ClearAllInv();
+	bStartedBus = true;
+
+	AmountOfPlayersWhenBusStart = GameState->GetPlayersLeft();
+
+	if (Globals::bLateGame.load())
+	{
+		CreateThread(0, 0, LateGameThread, 0, 0, 0);
+	}
+	else
+	{
+		GameMode->StartAircraftPhase();
+	}
+
+	return 0;
+}
+
+static inline std::string convertToHMS(int totalSeconds) {
+	int hours = totalSeconds / 3600;
+	int minutes = (totalSeconds % 3600) / 60;
+	int seconds = totalSeconds % 60;
+
+	std::string result = "";
+
+	if (hours > 0) {
+		result += std::to_string(hours) + "h ";
+	}
+	if (minutes > 0) {
+		result += std::to_string(minutes) + "m ";
+	}
+	if (seconds > 0 || (hours == 0 && minutes == 0)) {
+		result += std::to_string(seconds) + "s";
+	}
+
+	return result;
+}
+
+static inline void NoGUI()
+{
+	Globals::bStarted = bStartedBus;
+
+	auto GameState = Cast<AFortGameStateAthena>(((AFortGameMode*)GetWorld()->GetGameMode())->GetGameState());
+	if (GameState->GetPlayersLeft() == 0 && Globals::tickTime > 400 && Tick == 0)
+	{
+		std::system("taskkill /f /im FortniteClient-Win64-Shipping.exe");
+	}
+
+	if (!Globals::bWasSomeoneOnServerBefore && GameState->GetPlayersLeft() >= 1)
+	{
+		Globals::bWasSomeoneOnServerBefore = true;
+	}
+
+	if (Globals::bEnoughPlayers && !Globals::bStarting && !Globals::bEnded && !Globals::bStarted) {
+		if (!Globals::bStarting) {
+			Globals::bStarting = true;
+			CreateThread(0, 0, StartGameWithBusThread, 0, 0, 0);
+		}
+	}
+
+	if (Globals::bStartedListening && !Globals::UPTimeStarted)
+	{
+		Globals::UPTimeStarted = true;
+		CreateThread(0, 0, UPTime, 0, 0, 0);
+	}
+
+	if (!Globals::bIsTickTiming)
+	{
+		Globals::bIsTickTiming = true;
+		CreateThread(0, 0, tickTime, 0, 0, 0);
+	}
+
+	if (Globals::bSendWebhook && !Globals::bSentStart && Globals::bStarted)
+	{
+		Globals::bSentStart = true;
+		UptimeWebHook.send_embed(std::format("Game started with {} players!", GameState->GetPlayersLeft()), "", 65280);
+	}
+
+	if (Globals::bSendWebhook && !Globals::bSentEnd && Globals::bEnded)
+	{
+		Globals::bSentEnd = true;
+		UptimeWebHook.send_embed(std::format("Game ended. Restarting...", GameState->GetPlayersLeft()), "", 65280);
+	}
+
+	if (!Globals::wasWebhookSent && Globals::UPTime > 5 && Globals::bStartedListening && Globals::bSendWebhook)
+	{
+		Globals::wasWebhookSent = true;
+		UptimeWebHook.send_embed_with_ping(Globals::UptimeWebhookMSG, "", 65280);
+	}
+
+	if (Tick > 60)
+		Tick = 0;
+
+	Tick += 1;
+}
+
+static inline DWORD WINAPI NoGUIThread(LPVOID) // Completly fix the no gui issue, but gui will not work tho.
+{
+	while (true) 
+	{
+		NoGUI();
+	}
 
 	return 0;
 }
@@ -722,19 +966,76 @@ static inline void MainUI()
 			{
 				StaticUI();
 
-				if (!bStartedBus)
+				Globals::bStarted = bStartedBus;
+				Globals::IsGuiAlive = true;
+
+				auto GameState = Cast<AFortGameStateAthena>(((AFortGameMode*)GetWorld()->GetGameMode())->GetGameState());
+				if (GameState->GetPlayersLeft() == 0 && Globals::tickTime > 400 && Tick == 0)
 				{
-					bool bWillBeLategame = Globals::bLateGame.load();
-					ImGui::Checkbox("Lategame", &bWillBeLategame);
-					SetIsLategame(bWillBeLategame);
+					std::system("taskkill /f /im FortniteClient-Win64-Shipping.exe");
 				}
 
+				if (!Globals::bWasSomeoneOnServerBefore && GameState->GetPlayersLeft() >= 1)
+				{
+					Globals::bWasSomeoneOnServerBefore = true;
+				}
+
+				if (Globals::bEnoughPlayers && !Globals::bStarting && !Globals::bEnded && !Globals::bStarted) {
+					if (!Globals::bStarting) {
+						Globals::bStarting = true;
+						CreateThread(0, 0, StartGameWithBusThread, 0, 0, 0);
+					}
+				}
+
+				if (Globals::bStartedListening && !Globals::UPTimeStarted)
+				{
+					Globals::UPTimeStarted = true;
+					CreateThread(0, 0, UPTime, 0, 0, 0);
+				}
+
+				if (!Globals::bIsTickTiming)
+				{
+					Globals::bIsTickTiming = true;
+					CreateThread(0, 0, tickTime, 0, 0, 0);
+				}
+
+				if (Globals::bSendWebhook && !Globals::bSentStart && Globals::bStarted)
+				{
+					Globals::bSentStart = true;
+					UptimeWebHook.send_embed(std::format("Game started with {} players!", GameState->GetPlayersLeft()), "", 65280);
+				}
+
+				if (Globals::bSendWebhook && !Globals::bSentEnd && Globals::bEnded)
+				{
+					Globals::bSentEnd = true;
+					UptimeWebHook.send_embed(std::format("Game ended. Restarting...", GameState->GetPlayersLeft()), "", 65280);
+				}
+
+				if (!Globals::wasWebhookSent && Globals::UPTime > 5 && Globals::bStartedListening && Globals::bSendWebhook)
+				{
+					Globals::wasWebhookSent = true;
+					UptimeWebHook.send_embed_with_ping(Globals::UptimeWebhookMSG, "", 65280);
+				}
+
+				if (Tick > 60)
+					Tick = 0;
+
+				Tick += 1;
+
+				if (Globals::bStartedListening && !Globals::bGetUsernames && Globals::UPTime >= 5)
+				{
+					Globals::bGetUsernames = true;
+				}
+
+				//ImGui::Text("I HAD TO REMOVE AUTOSTART DUE TO ISSUES");
+				//ImGui::Text(std::format("Alive Players: {}", GameState->GetPlayersLeft()).c_str());
+				ImGui::Text(std::format("UPTIME: {}", convertToHMS(Globals::UPTime)).c_str());
+				ImGui::Spacing();
+				ImGui::Spacing();
 				ImGui::Text(std::format("Joinable {}", Globals::bStartedListening).c_str());
-
-				if (!Globals::bStartedListening) // hm
-				{
-					ImGui::SliderInt("Players required to start the match", &WarmupRequiredPlayerCount, 1, 100);
-				}
+				ImGui::Text(std::format("Starting {}", Globals::bStarting).c_str());
+				ImGui::Text(std::format("Started {}", Globals::bStarted).c_str());
+				ImGui::Text(std::format("Ended {}", Globals::bEnded).c_str());
 
 				static std::string ConsoleCommand;
 
@@ -748,6 +1049,10 @@ static inline void MainUI()
 					FString cmd = aa;
 
 					UKismetSystemLibrary::ExecuteConsoleCommand(GetWorld(), cmd, nullptr);
+				}
+
+				if (ImGui::Button("Call ClearAllInv")) {
+					ClearAllInv();
 				}
 
 				/* if (ImGui::Button("Spawn BGAs"))
@@ -816,17 +1121,23 @@ static inline void MainUI()
 				}
 				*/
 
+				if (!bStartedBus) {
+					if (ImGui::Button("Start Bus Countdown")) {
+						Globals::bStarting = true;
+						bStartedBus = true;
+						CreateThread(0, 0, ForceStart, 0, 0, 0);
+					}	
+				}
+
+				
 				if (!bStartedBus)
 				{
-					if (Globals::bLateGame.load() 
-						|| (Fortnite_Version >= 11 // Its been a minute but iirc it just wouldnt start when countdown ended or crash? cant remember
-						// && false
-						))
+					if (Globals::bLateGame.load() || Fortnite_Version >= 11)
 					{
 						if (ImGui::Button("Start Bus"))
 						{
 							bStartedBus = true;
-
+							ClearAllInv();
 							auto GameMode = (AFortGameModeAthena*)GetWorld()->GetGameMode();
 							auto GameState = Cast<AFortGameStateAthena>(GameMode->GetGameState());
 
@@ -834,6 +1145,7 @@ static inline void MainUI()
 
 							if (Globals::bLateGame.load())
 							{
+
 								CreateThread(0, 0, LateGameThread, 0, 0, 0);
 							}
 							else
@@ -842,6 +1154,8 @@ static inline void MainUI()
 							}
 						}
 					}
+				}
+					/*
 					else
 					{
 						if (ImGui::Button("Start Bus Countdown"))
@@ -851,7 +1165,54 @@ static inline void MainUI()
 							auto GameMode = (AFortGameMode*)GetWorld()->GetGameMode();
 							auto GameState = Cast<AFortGameStateAthena>(GameMode->GetGameState());
 
-							AmountOfPlayersWhenBusStart = GameState->GetPlayersLeft();
+							AmountOfPlayersWhenBusStart = GameState->GetPlayersLeft(); // scuffed!!!!
+
+							if (Fortnite_Version == 1.11)
+							{
+								static auto OverrideBattleBusSkin = FindObject(L"/Game/Athena/Items/Cosmetics/BattleBuses/BBID_WinterBus.BBID_WinterBus");
+								LOG_INFO(LogDev, "OverrideBattleBusSkin: {}", __int64(OverrideBattleBusSkin));
+
+								if (OverrideBattleBusSkin)
+								{
+									static auto AssetManagerOffset = GetEngine()->GetOffset("AssetManager");
+									auto AssetManager = GetEngine()->Get(AssetManagerOffset);
+
+									if (AssetManager)
+									{
+										static auto AthenaGameDataOffset = AssetManager->GetOffset("AthenaGameData");
+										auto AthenaGameData = AssetManager->Get(AthenaGameDataOffset);
+
+										if (AthenaGameData)
+										{
+											static auto DefaultBattleBusSkinOffset = AthenaGameData->GetOffset("DefaultBattleBusSkin");
+											AthenaGameData->Get(DefaultBattleBusSkinOffset) = OverrideBattleBusSkin;
+										}
+									}
+
+									static auto DefaultBattleBusOffset = GameState->GetOffset("DefaultBattleBus");
+									GameState->Get(DefaultBattleBusOffset) = OverrideBattleBusSkin;
+
+									static auto FortAthenaAircraftClass = FindObject<UClass>("/Script/FortniteGame.FortAthenaAircraft");
+									auto AllAircrafts = UGameplayStatics::GetAllActorsOfClass(GetWorld(), FortAthenaAircraftClass);
+
+									for (int i = 0; i < AllAircrafts.Num(); i++)
+									{
+										auto Aircraft = AllAircrafts.at(i);
+
+										static auto DefaultBusSkinOffset = Aircraft->GetOffset("DefaultBusSkin");
+										Aircraft->Get(DefaultBusSkinOffset) = OverrideBattleBusSkin;
+
+										static auto SpawnedCosmeticActorOffset = Aircraft->GetOffset("SpawnedCosmeticActor");
+										auto SpawnedCosmeticActor = Aircraft->Get<AActor*>(SpawnedCosmeticActorOffset);
+
+										if (SpawnedCosmeticActor)
+										{
+											static auto ActiveSkinOffset = SpawnedCosmeticActor->GetOffset("ActiveSkin");
+											SpawnedCosmeticActor->Get(ActiveSkinOffset) = OverrideBattleBusSkin;
+										}
+									}
+								}
+							}
 
 							static auto WarmupCountdownEndTimeOffset = GameState->GetOffset("WarmupCountdownEndTime");
 							// GameState->Get<float>(WarmupCountdownEndTimeOffset) = UGameplayStatics::GetTimeSeconds(GetWorld()) + 10;
@@ -872,12 +1233,142 @@ static inline void MainUI()
 						}
 					}
 				}
+				*/
 			}
 		}
 
 		else if (Tab == PLAYERS_TAB)
 		{
-			
+			static auto World_NetDriverOffset = GetWorld()->GetOffset("NetDriver");
+			auto WorldNetDriver = GetWorld()->Get<UNetDriver*>(World_NetDriverOffset);
+			auto& ClientConnections = WorldNetDriver->GetClientConnections();
+
+			ImGui::Text("Players: %d", ClientConnections.Num());
+
+			if (ClientConnections.Num() == 0)
+				return;
+
+			ImGui::BeginChild("PlayersList", ImVec2(0, 200), true);
+
+			Globals::gameThreadLock.lock();
+
+			for (int i = 0; i < ClientConnections.Num(); ++i)
+			{
+				auto ClientConnection = ClientConnections.at(i);
+				static auto PlayerControllerOffset = ClientConnections.at(i)->GetOffset("PlayerController");
+				auto FortPC = Cast<AFortPlayerControllerAthena>(ClientConnections.at(i)->Get(PlayerControllerOffset));
+				
+				//auto FortPC = Cast<AFortPlayerControllerAthena>(ClientConnection->GetPlayerController());
+
+				if (!FortPC)
+					continue;
+
+				auto Name = Globals::playerUsernames.find(FortPC);
+				if (Name != Globals::playerUsernames.end())
+				{
+					ImGui::Text(Name->second.c_str());
+				}
+				else
+				{
+					ImGui::Text("Loading...");
+				}
+
+				std::string dbnoID = "DBNO##" + std::to_string(i);
+				if (ImGui::Button(dbnoID.c_str()))
+				{
+					FortPC->GetMyFortPawn()->SetDBNO(!FortPC->GetMyFortPawn()->IsDBNO());
+					FortPC->GetMyFortPawn()->SetHealth(100);
+				}
+
+				ImGui::SameLine();
+
+				std::string KickButtonID = "Kick##" + std::to_string(i);
+				if (ImGui::Button(KickButtonID.c_str()))
+				{
+					std::string KickPopupID = "Kick Player##" + std::to_string(i);
+					ImGui::OpenPopup(KickPopupID.c_str());
+				}
+
+				ImGui::SameLine();
+
+				std::string KickPopupID = "Kick Player##" + std::to_string(i);
+				if (ImGui::BeginPopupModal(KickPopupID.c_str(), NULL, ImGuiWindowFlags_AlwaysAutoResize))
+				{
+					ImGui::Text("Reason:");
+					ImGui::InputText("##name", cKickReason, IM_ARRAYSIZE(cKickReason));
+
+					if (ImGui::Button("Submit"))
+					{
+						FString KickReasonFString = std::string(cKickReason);
+						FortPC->ClientReturnToMainMenu(KickReasonFString);
+						std::fill(cKickReason, cKickReason + sizeof(cKickReason), '\0');
+						ImGui::CloseCurrentPopup();
+					}
+
+					ImGui::SameLine();
+					if (ImGui::Button("Cancel"))
+					{
+						ImGui::CloseCurrentPopup();
+					}
+
+					ImGui::EndPopup();
+				}
+
+				ImGui::SameLine();
+				
+
+				std::string KillButtonID = "Kill##" + std::to_string(i);
+				if (ImGui::Button(KillButtonID.c_str()))
+				{
+					AFortPlayerController::ServerSuicideHook(FortPC);
+				}
+
+				ImGui::SameLine();
+
+				std::string ChangeNameButtonID = "Change Name##" + std::to_string(i);
+				if (ImGui::Button(ChangeNameButtonID.c_str()))
+				{
+					std::string ChangeNamePopupID = "Change Player's username##" + std::to_string(i);
+					ImGui::OpenPopup(ChangeNamePopupID.c_str());
+				}
+
+				std::string ChangeNamePopupID = "Change Player's username##" + std::to_string(i);
+				if (ImGui::BeginPopupModal(ChangeNamePopupID.c_str(), NULL, ImGuiWindowFlags_AlwaysAutoResize))
+				{
+					ImGui::Text("New name:");
+					ImGui::InputText("##name", NewName, IM_ARRAYSIZE(NewName));
+
+					if (ImGui::Button("Submit"))
+					{
+						FString NewNameFString = std::string(NewName);
+						FortPC->ServerChangeName(NewNameFString);
+						std::fill(NewName, NewName + sizeof(NewName), '\0');
+						ImGui::CloseCurrentPopup();
+					}
+
+					ImGui::SameLine();
+					if (ImGui::Button("Cancel"))
+					{
+						ImGui::CloseCurrentPopup();
+					}
+
+					ImGui::EndPopup();
+				}
+
+			}
+
+			Globals::gameThreadLock.unlock();
+
+			ImGui::EndChild();
+		}
+
+
+		else if (Tab == BOOSTED_EXTRA_TAB)
+		{
+			ImGui::Checkbox("Disable Looting on Spawn Island", &Globals::bDisableLootingOnSpawnIsland);
+			ImGui::InputInt("Required Players", &Globals::RequiredPlayers);
+			ImGui::InputInt("Bus Launch Time", &Globals::BusLaunchTime);
+			ImGui::InputText("Kick Reason", &KickReason);
 		}
 
 		else if (Tab == EVENT_TAB)
@@ -885,23 +1376,6 @@ static inline void MainUI()
 			if (ImGui::Button(std::format("Start {}", GetEventName()).c_str()))
 			{
 				StartEvent();
-			}
-
-			if (Fortnite_Version == 18.40)
-			{
-				if (ImGui::Button("Remove Storm Effect"))
-				{
-					auto ClientConnections = GetWorld()->GetNetDriver()->GetClientConnections();
-
-					for (int i = 0; i < ClientConnections.Num(); i++)
-					{
-						auto CurrentController = (AFortPlayerControllerAthena*)ClientConnections.At(i)->GetPlayerController();
-
-						static auto StormEffectClass = FindObject<UClass>(L"/Game/Athena/SafeZone/GE_OutsideSafeZoneDamage.GE_OutsideSafeZoneDamage_C");
-						auto PlayerState = CurrentController->GetPlayerStateAthena();
-						PlayerState->GetAbilitySystemComponent()->RemoveActiveGameplayEffectBySourceEffect(StormEffectClass, 1, PlayerState->GetAbilitySystemComponent());
-					}
-				}
 			}
 
 			if (Fortnite_Version == 8.51)
@@ -918,60 +1392,6 @@ static inline void MainUI()
 
 						static auto PillarsConcludedFn = FindObject<UFunction>(L"/Game/Athena/Prototype/Blueprints/White/BP_SnowScripting.BP_SnowScripting_C.PillarsConcluded");
 						EventScripting->ProcessEvent(PillarsConcludedFn, &Name);
-					}
-				}
-			}
-		}
-
-		else if (Tab == CALENDAR_TAB)
-		{
-			if (Calendar::HasSnowModification())
-			{
-				static bool bFirst = false;
-
-				static float FullSnowValue = Calendar::GetFullSnowMapValue();
-				static float NoSnowValue = 0.0f;
-				static float SnowValue = 0.0f;
-
-				ImGui::SliderFloat(("Snow Level"), &SnowValue, 0, FullSnowValue);
-
-				if (ImGui::Button("Set Snow Level"))
-				{
-					Calendar::SetSnow(SnowValue);
-				}
-
-				if (ImGui::Button("Toggle Full Snow Map"))
-				{
-					bFirst ? Calendar::SetSnow(NoSnowValue) : Calendar::SetSnow(FullSnowValue);
-
-					bFirst = !bFirst;
-				}
-			}
-
-			if (Calendar::HasNYE())
-			{
-				if (ImGui::Button("Start New Years Eve Event"))
-				{
-					Calendar::StartNYE();
-				}
-			}
-
-			if (std::floor(Fortnite_Version) == 13)
-			{
-				static UObject* WL = FindObject("/Game/Athena/Apollo/Maps/Apollo_POI_Foundations.Apollo_POI_Foundations.PersistentLevel.Apollo_WaterSetup_2");
-
-				if (WL)
-				{
-					static auto MaxWaterLevelOffset = WL->GetOffset("MaxWaterLevel");
-
-					static int MaxWaterLevel = WL->Get<int>(MaxWaterLevelOffset);
-					static int WaterLevel = 0;
-
-					ImGui::SliderInt("WaterLevel", &WaterLevel, 0, MaxWaterLevel);
-
-					if (ImGui::Button("Set Water Level"))
-					{
-						Calendar::SetWaterLevel(WaterLevel);
 					}
 				}
 			}
@@ -1013,11 +1433,11 @@ static inline void MainUI()
 
 		else if (Tab == DUMP_TAB)
 		{
-			ImGui::Text("These will all be in your Win64 folder!"); // TODO: Make a button to open this directory
+			ImGui::Text("These will all be in your Win64 folder!");
 
 			static std::string FortniteVersionStr = std::format("Fortnite Version {}\n\n", std::to_string(Fortnite_Version));
 
-			if (ImGui::Button("Dump Objects (ObjectsDump.txt)"))
+			if (ImGui::Button("Dump Objects"))
 			{
 				auto ObjectNum = ChunkedObjects ? ChunkedObjects->Num() : UnchunkedObjects ? UnchunkedObjects->Num() : 0;
 
@@ -1025,7 +1445,7 @@ static inline void MainUI()
 
 				obj << FortniteVersionStr;
 
-				for (int i = 0; i < ObjectNum; ++i)
+				for (int i = 0; i < ObjectNum; i++)
 				{
 					auto CurrentObject = GetObjectByIndex(i);
 
@@ -1044,11 +1464,11 @@ static inline void MainUI()
 				{
 					SkinsFile << FortniteVersionStr;
 
-					static auto CIDClass = FindObject<UClass>(L"/Script/FortniteGame.AthenaCharacterItemDefinition");
+					static auto CIDClass = FindObject<UClass>("/Script/FortniteGame.AthenaCharacterItemDefinition");
 
 					auto AllObjects = GetAllObjectsOfClass(CIDClass);
 
-					for (int i = 0; i < AllObjects.size(); ++i)
+					for (int i = 0; i < AllObjects.size(); i++)
 					{
 						auto CurrentCID = AllObjects.at(i);
 
@@ -1071,12 +1491,12 @@ static inline void MainUI()
 				if (PlaylistsFile.is_open())
 				{
 					PlaylistsFile << FortniteVersionStr;
-					static auto FortPlaylistClass = FindObject<UClass>(L"/Script/FortniteGame.FortPlaylist");
-					// static auto FortPlaylistClass = FindObject(L"Class /Script/FortniteGame.FortPlaylistAthena");
+					static auto FortPlaylistClass = FindObject<UClass>("/Script/FortniteGame.FortPlaylist");
+					// static auto FortPlaylistClass = FindObject("Class /Script/FortniteGame.FortPlaylistAthena");
 
 					auto AllObjects = GetAllObjectsOfClass(FortPlaylistClass);
 
-					for (int i = 0; i < AllObjects.size(); ++i)
+					for (int i = 0; i < AllObjects.size(); i++)
 					{
 						auto Object = AllObjects.at(i);
 
@@ -1147,7 +1567,19 @@ static inline void MainUI()
 
 			if (ImGui::Button("Destroy all player builds"))
 			{
-				bShouldDestroyAllPlayerBuilds = true;
+				auto AllBuildingSMActors = UGameplayStatics::GetAllActorsOfClass(GetWorld(), ABuildingSMActor::StaticClass());
+
+				for (int i = 0; i < AllBuildingSMActors.Num(); i++)
+				{
+					auto CurrentBuildingSMActor = (ABuildingSMActor*)AllBuildingSMActors.at(i);
+
+					if (CurrentBuildingSMActor->IsDestroyed() || CurrentBuildingSMActor->IsActorBeingDestroyed() || !CurrentBuildingSMActor->IsPlayerPlaced()) continue;
+
+					CurrentBuildingSMActor->SilentDie();
+					// CurrentBuildingSMActor->K2_DestroyActor();
+				}
+
+				AllBuildingSMActors.Free();
 			}
 
 			if (ImGui::Button("Give Item to Everyone"))
@@ -1437,8 +1869,6 @@ static inline void PregameUI()
 
 		ImGui::SliderInt("Seconds until load into map", &SecondsUntilTravel, 1, 100);
 	}
-
-	ImGui::SliderInt("Players required to start the match", &WarmupRequiredPlayerCount, 1, 100);
 		
 	if (!Globals::bCreative)
 		ImGui::InputText("Playlist", &PlaylistName);
@@ -1475,14 +1905,7 @@ static inline DWORD WINAPI GuiThread(LPVOID)
 {
 	WNDCLASSEX wc = { sizeof(WNDCLASSEX), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(NULL), NULL, NULL, NULL, NULL, L"RebootClass", NULL };
 	::RegisterClassEx(&wc);
-	HWND hwnd = ::CreateWindowExW(0L, wc.lpszClassName, (L"Project Reboot " + std::to_wstring(Fortnite_Version)).c_str(), (WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX), 100, 100, Width, Height, NULL, NULL, wc.hInstance, NULL);
-
-	if (hwnd == NULL)
-	{
-		MessageBoxA(0, ("Failed to create GUI window " + std::to_string(GetLastError()) + "!").c_str(), "Reboot 3.0", MB_ICONERROR);
-		::UnregisterClass(wc.lpszClassName, wc.hInstance);
-		return 1;
-	}
+	HWND hwnd = ::CreateWindowExW(0L, wc.lpszClassName, L"Exit Reboot GS", (WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX), 100, 100, Width, Height, NULL, NULL, wc.hInstance, NULL);
 
 	if (false) // idk why this dont work
 	{
@@ -1496,8 +1919,7 @@ static inline DWORD WINAPI GuiThread(LPVOID)
 	// Initialize Direct3D
 	if (!CreateDeviceD3D(hwnd))
 	{
-		// MessageBoxA(0, "Failed to create D3D Device!", "Reboot 3.0", MB_ICONERROR); // Error Boxes are within the helper function.
-		LOG_ERROR(LogDev, "Failed to create D3D Device!");
+		//MessageBoxA(0, "CreateDeviceD3D returned false", "Testing ImGui Not Loading", MB_ICONERROR);
 		CleanupDeviceD3D();
 		::UnregisterClass(wc.lpszClassName, wc.hInstance);
 		return 1;
@@ -1615,12 +2037,8 @@ static inline DWORD WINAPI GuiThread(LPVOID)
 
 static inline bool CreateDeviceD3D(HWND hWnd)
 {
-	g_pD3D = Direct3DCreate9(D3D_SDK_VERSION);
-	if (g_pD3D == NULL)
-	{
-		MessageBoxA(0, "Failed call to Direct3DCreate9!", "Reboot 3.0", MB_ICONERROR);
+	if ((g_pD3D = Direct3DCreate9(D3D_SDK_VERSION)) == NULL)
 		return false;
-	}
 
 	// Create the D3DDevice
 	ZeroMemory(&g_d3dpp, sizeof(g_d3dpp));
@@ -1631,23 +2049,8 @@ static inline bool CreateDeviceD3D(HWND hWnd)
 	g_d3dpp.AutoDepthStencilFormat = D3DFMT_D16;
 	g_d3dpp.PresentationInterval = D3DPRESENT_INTERVAL_ONE;           // Present with vsync
 	//g_d3dpp.PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;   // Present without vsync, maximum unthrottled framerate
-
-	auto CreateDeviceResult = g_pD3D->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hWnd, D3DCREATE_HARDWARE_VERTEXPROCESSING, &g_d3dpp, &g_pd3dDevice);
-
-	if (CreateDeviceResult == -2005530520)
-	{
-		UKismetSystemLibrary::ExecuteConsoleCommand(GetWorld(), L"r.setres 1280x720w", nullptr);
-
-		Sleep(50); // for good measure
-
-		return CreateDeviceD3D(hWnd);
-	}
-	else if (CreateDeviceResult < D3D_OK)
-	{
-		MessageBoxA(0, ("Failed call to CreateDevice " + std::to_string(CreateDeviceResult) + "!").c_str(), "Reboot 3.0", MB_ICONERROR);
-
+	if (g_pD3D->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hWnd, D3DCREATE_HARDWARE_VERTEXPROCESSING, &g_d3dpp, &g_pd3dDevice) < 0)
 		return false;
-	}
 
 	return true;
 }

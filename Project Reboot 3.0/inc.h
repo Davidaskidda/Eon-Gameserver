@@ -20,10 +20,7 @@ extern inline int Engine_Version = 0; // For example, 420, 421, etc. // Prevent 
 extern inline double Fortnite_Version = 0; // For example, 4.1, 6.21, etc. // Prevent using this when possible.
 extern inline int Fortnite_CL = 0;
 
-// #define PROD // this doesnt do anything besides remove processeventhook and some assert stuff
-// DEPRACTERD ^^^ (see Globals::bDeveloperMode)
-
-// #define ABOVE_S20
+#define PROD // this doesnt do anything besides remove processeventhook and some assert stuff
 
 struct PlaceholderBitfield
 {
@@ -62,6 +59,8 @@ inline bool IsRestartingSupported()
 	return Engine_Version >= 419 && Engine_Version < 424;
 }
 
+// #define ABOVE_S20
+
 /*
 
 enum class AllocatorType
@@ -84,8 +83,3 @@ public:
 };
 
 */
-
-struct PadHex10 { char Pad[0x10]; };
-struct PadHex18 { char Pad[0x18]; };
-struct PadHexA8 { char Pad[0xA8]; };
-struct PadHexB0 { char Pad[0xB0]; };

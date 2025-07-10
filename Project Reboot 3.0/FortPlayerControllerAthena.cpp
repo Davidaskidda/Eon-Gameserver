@@ -132,27 +132,6 @@ void AFortPlayerControllerAthena::EndGhostModeHook(AFortPlayerControllerAthena* 
 	return EndGhostModeOriginal(PlayerController);
 }
 
-void AFortPlayerControllerAthena::ServerCreativeSetFlightSpeedIndexHook(UObject* Context, FFrame* Stack)
-{
-	int Index;
-	Stack->StepCompiledIn(&Index);
-
-	// LOG_INFO(LogDev, "Player {} wanting to change creative flight speed at index {}", Context->GetName(), Index);
-
-	static auto WantedFlightSpeedChangedFn = FindObject<UFunction>("/Script/FortniteGame.FortPlayerControllerGameplay:OnRep_FlyingModifierIndex");
-
-	if (!WantedFlightSpeedChangedFn)
-	{
-		return;
-	}
-
-	static auto FlyingModifierIndexOffset = Context->GetOffset("FlyingModifierIndex");
-	Context->Get<int>(FlyingModifierIndexOffset) = Index;
-
-	return Context->ProcessEvent(WantedFlightSpeedChangedFn);
-}
-
-
 void AFortPlayerControllerAthena::EnterAircraftHook(UObject* PC, AActor* Aircraft)
 {
 	auto PlayerController = Cast<AFortPlayerController>(Engine_Version < 424 ? PC : ((UActorComponent*)PC)->GetOwner());
@@ -355,13 +334,6 @@ void AFortPlayerControllerAthena::ServerRestartPlayerHook(AFortPlayerControllerA
 	static auto ZoneServerRestartPlayer = __int64(FortPlayerControllerZoneDefault->VFTable[GetFunctionIdxOrPtr(ServerRestartPlayerFn) / 8]);
 	static void (*ZoneServerRestartPlayerOriginal)(AFortPlayerController*) = decltype(ZoneServerRestartPlayerOriginal)(__int64(ZoneServerRestartPlayer));
 	
-	// auto NAME_Spectating = UKismetStringLibrary::Conv_StringToName(L"NAME_Spectating");
-
-	// LOG_INFO(LogDev, "ISplayerwaiting: {}", Controller->IsPlayerWaiting());
-
-	// Controller->GetStateName() = NAME_Spectating;
-	// Controller->SetPlayerIsWaiting(true);
-
 	LOG_INFO(LogDev, "ServerRestartPlayerHook Call 0x{:x} returning with 0x{:x}!", ZoneServerRestartPlayer - __int64(_ReturnAddress()), __int64(ZoneServerRestartPlayerOriginal) - __int64(GetModuleHandleW(0)));
 	return ZoneServerRestartPlayerOriginal(Controller);
 }
@@ -436,7 +408,7 @@ void AFortPlayerControllerAthena::ServerAcknowledgePossessionHook(APlayerControl
 
 	if (Globals::bNoMCP)
 	{
-		static auto CustomCharacterPartClass = FindObject<UClass>(L"/Script/FortniteGame.CustomCharacterPart");
+		static auto CustomCharacterPartClass = FindObject<UClass>("/Script/FortniteGame.CustomCharacterPart");
 		static auto backpackPart = LoadObject("/Game/Characters/CharacterParts/Backpacks/NoBackpack.NoBackpack", CustomCharacterPartClass);
 
 		// PawnAsFort->ServerChoosePart(EFortCustomPartType::Backpack, backpackPart);
@@ -646,60 +618,4 @@ void AFortPlayerControllerAthena::UpdateTrackedAttributesHook(AFortPlayerControl
 
 	if (ItemInstancesToRemove.size() > 0)
 		WorldInventory->Update();
-}
-
-void AFortPlayerControllerAthena::ServerClientIsReadyToRespawnHook(AFortPlayerControllerAthena* PlayerControllerAthena)
-{
-	AFortPlayerStateAthena* PlayerStateAthena = Cast<AFortPlayerStateAthena>(PlayerControllerAthena->GetPlayerState());
-	AFortGameModeAthena* GameModeAthena = Cast<AFortGameModeAthena>(GetWorld()->GetGameMode());
-
-	if (!PlayerStateAthena || !GameModeAthena)
-		return;
-
-	AFortGameStateAthena* GameStateAthena = Cast<AFortGameStateAthena>(GameModeAthena->GetGameState());
-	if (!GameStateAthena) return;
-
-	if (GameStateAthena->IsRespawningAllowed(PlayerStateAthena))
-	{
-		FFortRespawnData* RespawnData = PlayerStateAthena->GetRespawnData();
-
-		if (RespawnData->IsServerReady() && RespawnData->IsRespawnDataAvailable())
-		{
-			const FVector& RespawnLocation = RespawnData->GetRespawnLocation();
-			const FRotator& RespawnRotation = RespawnData->GetRespawnRotation();
-
-			// RestartPlayer doesn't work, idk why
-			static auto SpawnDefaultPawnAtTransformFn = FindObject<UFunction>(L"/Script/Engine.GameModeBase.SpawnDefaultPawnAtTransform");
-
-			FTransform SpawnTransform{};
-			SpawnTransform.Translation = RespawnLocation;
-			SpawnTransform.Rotation = RespawnRotation.Quaternion();
-			SpawnTransform.Scale3D = FVector(1, 1, 1);
-
-			struct { AController* NewPlayer; FTransform SpawnTransform; APawn* ReturnValue; }
-			AGameModeBase_SpawnDefaultPawnAtTransform_Params{ PlayerControllerAthena, SpawnTransform };
-
-			GameModeAthena->ProcessEvent(SpawnDefaultPawnAtTransformFn, &AGameModeBase_SpawnDefaultPawnAtTransform_Params);
-
-			AFortPlayerPawn* PlayerPawn = Cast<AFortPlayerPawn>(AGameModeBase_SpawnDefaultPawnAtTransform_Params.ReturnValue);
-
-			if (!PlayerPawn)
-				return;
-
-			PlayerPawn->SetOwner(PlayerControllerAthena);
-
-			PlayerControllerAthena->Possess(PlayerPawn);
-
-			PlayerPawn->SetMaxHealth(100);
-			PlayerPawn->SetHealth(100);
-			PlayerPawn->SetMaxShield(100);
-			PlayerPawn->SetShield(100);
-
-			PlayerControllerAthena->RespawnPlayerAfterDeath(true);
-
-			RespawnData->IsClientReady() = true;
-		}
-	}
-
-	printf_s(__FUNCTION__"\n");
 }

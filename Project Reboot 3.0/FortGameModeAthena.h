@@ -10,7 +10,6 @@
 #include "FortAbilitySet.h"
 #include "FortPlayerControllerAthena.h"
 #include "FortItemDefinition.h"
-#include "FortServerBotManagerAthena.h"
 
 struct FAircraftFlightInfo
 {
@@ -83,8 +82,9 @@ static inline UFortAbilitySet* GetPlayerAbilitySet()
 {
 	// There are some variables that contain this but it changes through versions soo..
 
-	static auto GameplayAbilitySet = (Fortnite_Version >= 8.30 ? LoadObject<UFortAbilitySet>(L"/Game/Abilities/Player/Generic/Traits/DefaultPlayer/GAS_AthenaPlayer.GAS_AthenaPlayer")
-		: LoadObject<UFortAbilitySet>(L"/Game/Abilities/Player/Generic/Traits/DefaultPlayer/GAS_DefaultPlayer.GAS_DefaultPlayer"));
+	static auto GameplayAbilitySet = (UFortAbilitySet*)(Fortnite_Version >= 8.30
+		? LoadObject(L"/Game/Abilities/Player/Generic/Traits/DefaultPlayer/GAS_AthenaPlayer.GAS_AthenaPlayer", UFortAbilitySet::StaticClass()) 
+		: LoadObject(L"/Game/Abilities/Player/Generic/Traits/DefaultPlayer/GAS_DefaultPlayer.GAS_DefaultPlayer", UFortAbilitySet::StaticClass()));
 
 	return GameplayAbilitySet;
 }
@@ -121,12 +121,8 @@ static void ShowFoundation(AActor* BuildingFoundation, bool bShow = true)
 
 	static auto DynamicFoundationTypeOffset = BuildingFoundation->GetOffset("DynamicFoundationType", false);
 
-	bool bChangeDynamicFoundationType = Fortnite_Version < 13;
-
-	if (DynamicFoundationTypeOffset != -1 && bChangeDynamicFoundationType)
-	{
+	if (DynamicFoundationTypeOffset != -1)
 		BuildingFoundation->Get<uint8_t>(DynamicFoundationTypeOffset) = bShow ? Static : StartDisabled;
-	}
 
 	/* static auto bShowHLODWhenDisabledOffset = BuildingFoundation->GetOffset("bShowHLODWhenDisabled", false);
 
@@ -232,11 +228,6 @@ static void StreamLevel(const std::string& LevelName, FVector Location = {})
 	ShowFoundation(BuildingFoundation);
 }
 
-class UFortSupplyDropInfo : public UObject // UDataAsset
-{
-public:
-};
-
 class AFortGameModeAthena : public AFortGameModePvPBase
 {
 public:
@@ -249,12 +240,6 @@ public:
 	{
 		static auto SafeZoneIndicatorOffset = GetOffset("SafeZoneIndicator");
 		return Get<AFortSafeZoneIndicator*>(SafeZoneIndicatorOffset);
-	}
-
-	UFortServerBotManagerAthena*& GetServerBotManager()
-	{
-		static auto ServerBotManagerOffset = GetOffset("ServerBotManager");
-		return Get<UFortServerBotManagerAthena*>(ServerBotManagerOffset);
 	}
 
 	AFortGameStateAthena* GetGameStateAthena()
@@ -280,8 +265,6 @@ public:
 	void PauseSafeZone(bool bPaused = true);
 	void StartAircraftPhase();
 
-	static void OverrideBattleBus(AFortGameStateAthena* GameState, UObject* OverrideBattleBusSkin);
-	static void OverrideSupplyDrop(AFortGameStateAthena* GameState, UClass* OverrideSupplyDropBusClass);
 	static void HandleSpawnRateForActorClass(UClass* ActorClass, float SpawnPercentage); // idk where to put
 
 	static void OnAircraftEnteredDropZoneHook(AFortGameModeAthena* GameModeAthena, AActor* Aircraft);

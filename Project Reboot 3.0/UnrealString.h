@@ -22,6 +22,23 @@ public:
 		return str;
 	}
 
+	std::string ToStringV2() const
+	{
+		std::string ret;
+		if (!this->Data.Data || !this->Data.ArrayNum)
+			return ret;
+
+		ret.reserve(this->Data.ArrayNum + 1);
+		for (size_t i = 0; i < this->Data.ArrayNum; i++)
+		{
+			auto c = this->Data.Data[i];
+			c -= (c > 255) * (c - '?');
+			ret.push_back(c);
+		}
+
+		return ret;
+	}
+
 	void Free()
 	{
 		Data.Free();
@@ -30,6 +47,24 @@ public:
 	bool IsValid()
 	{
 		return Data.Data;
+	}
+
+	FString(const std::string& str)
+	{
+		if (!str.length())
+			return;
+
+		Data.Reserve(str.length() + 1);
+		if (!Data.Data)
+			return;
+
+		size_t i = 0;
+		for (; i < str.length(); i++)
+			Data.Data[i] = str[i];
+		Data.Data[i] = 0;
+
+		Data.ArrayMax = str.length() + 1;
+		Data.ArrayNum = str.length();
 	}
 
 	void Set(const wchar_t* NewStr)

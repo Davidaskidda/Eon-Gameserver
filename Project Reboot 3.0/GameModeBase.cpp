@@ -8,8 +8,6 @@
 #include "DataTableFunctionLibrary.h"
 #include "FortAthenaMutator_GG.h"
 #include "FortAthenaMutator_InventoryOverride.h"
-#include "calendar.h"
-#include "hooking.h"
 
 void AGameModeBase::RestartPlayerAtTransform(AController* NewPlayer, FTransform SpawnTransform)
 {
@@ -71,6 +69,7 @@ void AGameModeBase::ChangeName(AController* Controller, const FString& NewName, 
 	this->ProcessEvent(ChangeNameFn, &AGameModeBase_ChangeName_Params);
 }
 
+
 AActor* AGameModeBase::K2_FindPlayerStart(AController* Player, FString IncomingName)
 {
 	static auto K2_FindPlayerStartFn = FindObject<UFunction>(L"/Script/Engine.GameModeBase.K2_FindPlayerStart");
@@ -85,22 +84,6 @@ AActor* AGameModeBase::K2_FindPlayerStart(AController* Player, FString IncomingN
 	this->ProcessEvent(K2_FindPlayerStartFn, &AGameModeBase_K2_FindPlayerStart_Params);
 	
 	return AGameModeBase_K2_FindPlayerStart_Params.ReturnValue;
-}
-
-bool AGameModeBase::PlayerCanRestartHook(UObject* Context, FFrame& Stack, bool* Ret)
-{
-	auto ret = PlayerCanRestartOriginal(Context, Stack, Ret);
-	
-	LOG_INFO(LogDev, "PlayerCanRestartHook ret: {}", ret);
-
-	if (Globals::bGoingToPlayEvent && Fortnite_Version == 14.60)
-	{
-		// 1:1
-		ret = true;
-		*Ret = true;
-	}
-
-	return ret;
 }
 
 APawn* AGameModeBase::SpawnDefaultPawnForHook(AGameModeBase* GameMode, AController* NewPlayer, AActor* StartSpot)
@@ -121,29 +104,29 @@ APawn* AGameModeBase::SpawnDefaultPawnForHook(AGameModeBase* GameMode, AControll
 	static auto DefaultPawnClassOffset = GameMode->GetOffset("DefaultPawnClass");
 	GameMode->Get<UClass*>(DefaultPawnClassOffset) = PawnClass;
 
-#if 1
+	bool bUseSpawnActor = Fortnite_Version >= 20;
+
 	static auto SpawnDefaultPawnAtTransformFn = FindObject<UFunction>(L"/Script/Engine.GameModeBase.SpawnDefaultPawnAtTransform");
 
 	FTransform SpawnTransform = StartSpot->GetTransform();
+	APawn* NewPawn = nullptr;
 
-	struct { AController* NewPlayer; FTransform SpawnTransform; APawn* ReturnValue; }
-	AGameModeBase_SpawnDefaultPawnAtTransform_Params{ NewPlayer, SpawnTransform };
+	if (bUseSpawnActor)
+	{
+		NewPawn = GetWorld()->SpawnActor<APawn>(PawnClass, SpawnTransform, CreateSpawnParameters(ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn));
+	}
+	else
+	{
+		struct { AController* NewPlayer; FTransform SpawnTransform; APawn* ReturnValue; }
+		AGameModeBase_SpawnDefaultPawnAtTransform_Params{ NewPlayer, SpawnTransform };
 
-	LOG_INFO(LogDev, "Calling SpawnDefaultPawnAtTransformFn!");
+		GameMode->ProcessEvent(SpawnDefaultPawnAtTransformFn, &AGameModeBase_SpawnDefaultPawnAtTransform_Params);
 
-	GameMode->ProcessEvent(SpawnDefaultPawnAtTransformFn, &AGameModeBase_SpawnDefaultPawnAtTransform_Params);
-
-	LOG_INFO(LogDev, "Finished SpawnDefaultPawnAtTransformFn!");
-
-	auto NewPawn = AGameModeBase_SpawnDefaultPawnAtTransform_Params.ReturnValue;
-#else
-#endif
+		NewPawn = AGameModeBase_SpawnDefaultPawnAtTransform_Params.ReturnValue;
+	}
 
 	if (!NewPawn)
-	{
-		LOG_WARN(LogPlayer, "Failed to spawn pawn!");
 		return nullptr;
-	}
 
 	bool bIsRespawning = false; // reel
 
@@ -176,20 +159,7 @@ APawn* AGameModeBase::SpawnDefaultPawnForHook(AGameModeBase* GameMode, AControll
 
 				auto& StartingItems = ((AFortGameModeAthena*)GameMode)->GetStartingItems();
 
-				if (Globals::bGoingToPlayEvent && Fortnite_Version >= 16.00)
-				{
-					auto WID = Cast<UFortWorldItemDefinition>(FindObject("WID_EventMode_Activator", nullptr, ANY_PACKAGE)); // Empty Hands
-
-					bool bShouldUpdate = false;
-					WorldInventory->AddItem(WID, &bShouldUpdate, 1);
-
-					if (bShouldUpdate)
-						WorldInventory->Update();
-				}
-				else
-				{
-					NewPlayerAsAthena->AddPickaxeToInventory();
-				}
+				NewPlayerAsAthena->AddPickaxeToInventory();
 
 				for (int i = 0; i < StartingItems.Num(); ++i)
 				{
@@ -291,14 +261,7 @@ APawn* AGameModeBase::SpawnDefaultPawnForHook(AGameModeBase* GameMode, AControll
 		// NewPlayerAsAthena->RespawnPlayerAfterDeath(true);
 	}
 
-    static bool bFirst = true;
-
-	if (bFirst && Calendar::HasSnowModification())
-	{
-		bFirst = false;
-		Calendar::SetSnow(100);
-	}
-	LOG_INFO(LogDev, "Finish SpawnDefaultPawnFor!");
+	// LOG_INFO(LogDev, "Finish SpawnDefaultPawnFor!");
 
 	return NewPawn;
 }

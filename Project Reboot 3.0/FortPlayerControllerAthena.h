@@ -1,5 +1,7 @@
 #pragma once
 
+#include "UFortControllerComponent_MapDiscoverability.h"
+
 #include "FortPlayerController.h"
 #include "FortPlayerStateAthena.h"
 #include "FortPlayerPawn.h"
@@ -171,6 +173,12 @@ public:
 		return GetPtr<FGhostModeRepData>(GhostModeRepDataOffset);
 	}
 
+	UFortControllerComponent_MapDiscoverability* GetDiscoverabilityComponent()
+	{
+		static auto DiscoverabilityComponentOffset = GetOffset("DiscoverabilityComponent");
+		return Get<UFortControllerComponent_MapDiscoverability*>(DiscoverabilityComponentOffset);
+	}
+
 	bool IsInGhostMode()
 	{
 		auto GhostModeRepData = GetGhostModeRepData();
@@ -201,10 +209,10 @@ public:
 			this->ProcessEvent(ClientClearDeathNotificationFn);
 	}
 
-	UAthenaPlayerMatchReport** GetMatchReport()
+	UAthenaPlayerMatchReport*& GetMatchReport()
 	{
-		static auto MatchReportOffset = GetOffset("MatchReport", false);
-		return MatchReportOffset == -1 ? nullptr : GetPtr<UAthenaPlayerMatchReport*>(MatchReportOffset);
+		static auto MatchReportOffset = GetOffset("MatchReport");
+		return Get<UAthenaPlayerMatchReport*>(MatchReportOffset);
 	}
 
 	void ClientSendTeamStatsForPlayer(FAthenaMatchTeamStats* TeamStats)
@@ -240,20 +248,14 @@ public:
 		this->ProcessEvent(ClientOnPawnRevivedFn, &EventInstigator);
 	}
 
-	bool IsMarkedAlive()
+	bool& IsMarkedAlive()
 	{
-		static auto bMarkedAliveOffset = GetOffset("bMarkedAlive", false);
-
-		if (bMarkedAliveOffset == -1) // nots ure if this is possible
-			return true;
-
-		static auto bMarkedAliveFieldMask = GetFieldMask(GetProperty("bMarkedAlive"));
-		return ReadBitfieldValue(bMarkedAliveOffset, bMarkedAliveFieldMask);
+		static auto bMarkedAliveOffset = GetOffset("bMarkedAlive");
+		return Get<bool>(bMarkedAliveOffset);
 	}
 
 	static void StartGhostModeHook(UObject* Context, FFrame* Stack, void* Ret); // we could native hook this but eh
 	static void EndGhostModeHook(AFortPlayerControllerAthena* PlayerController);
-	static void ServerCreativeSetFlightSpeedIndexHook(UObject* Context, FFrame* Stack);
 	static void EnterAircraftHook(UObject* PC, AActor* Aircraft);
 	static void ServerRequestSeatChangeHook(AFortPlayerControllerAthena* PlayerController, int TargetSeatIndex); // actually in zone
 	static void ServerRestartPlayerHook(AFortPlayerControllerAthena* Controller);
@@ -264,7 +266,6 @@ public:
 	static void GetPlayerViewPointHook(AFortPlayerControllerAthena* PlayerController, FVector& Location, FRotator& Rotation);
 	static void ServerReadyToStartMatchHook(AFortPlayerControllerAthena* PlayerController);
 	static void UpdateTrackedAttributesHook(AFortPlayerControllerAthena* PlayerController);
-	static void ServerClientIsReadyToRespawnHook(AFortPlayerControllerAthena* PlayerControllerAthena); // 1:1
 
 	static UClass* StaticClass()
 	{

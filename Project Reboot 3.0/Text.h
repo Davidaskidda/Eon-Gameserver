@@ -5,7 +5,6 @@
 
 struct ITextData
 {
-
 };
 
 class FText
@@ -13,4 +12,5 @@ class FText
 public:
 	TSharedRef<ITextData, ESPMode::ThreadSafe> TextData;
 	uint32 Flags;
+	char pad[0x4];
 };

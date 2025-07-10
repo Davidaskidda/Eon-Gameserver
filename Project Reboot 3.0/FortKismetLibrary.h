@@ -88,6 +88,8 @@ public:
 	static void ApplyCharacterCosmetics(UObject* WorldContextObject, const TArray<UObject*>& CharacterParts, UObject* PlayerState, bool* bSuccess);
 	static FVector FindGroundLocationAt(UWorld* World, AActor* IgnoreActor, FVector InLocation, float TraceStartZ, float TraceEndZ, FName TraceName);
 
+	static FString GetHumanReadableName(AActor* Actor);
+
 	static void PickLootDropsWithNamedWeightsHook(UObject* Context, FFrame& Stack, void* Ret);
 	static void SpawnItemVariantPickupInWorldHook(UObject* Context, FFrame& Stack, void* Ret);
 	static bool SpawnInstancedPickupInWorldHook(UObject* Context, FFrame& Stack, bool* Ret);

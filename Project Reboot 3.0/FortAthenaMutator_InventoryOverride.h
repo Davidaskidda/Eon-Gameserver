@@ -61,7 +61,7 @@ public:
 		if (!TeamLoadouts)
 			return FItemLoadoutTeamMap();
 
-		for (int i = 0; i < TeamLoadouts->Num(); ++i)
+		for (int i = 0; i < TeamLoadouts->Num(); i++)
 		{
 			auto& TeamLoadout = TeamLoadouts->at(i);
 
@@ -106,7 +106,7 @@ public:
 		return Get<EAthenaInventorySpawnOverride>(InventoryUpdateOverrideOffset);
 	}
 
-	EAthenaLootDropOverride GetDropAllItemsOverride(uint8_t TeamIndex = 255)
+	EAthenaLootDropOverride& GetDropAllItemsOverride(uint8_t TeamIndex = 255)
 	{
 		if (TeamIndex != 255)
 		{
@@ -125,7 +125,7 @@ public:
 
 	static UClass* StaticClass()
 	{
-		static auto Class = FindObject<UClass>(L"/Script/FortniteGame.FortAthenaMutator_InventoryOverride");
+		static auto Class = FindObject<UClass>("/Script/FortniteGame.FortAthenaMutator_InventoryOverride");
 		return Class;
 	}
 };

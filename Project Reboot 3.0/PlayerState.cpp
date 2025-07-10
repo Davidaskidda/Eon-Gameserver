@@ -23,6 +23,22 @@ FString APlayerState::GetPlayerName()
 	return Get<FString>(PlayerNameOffset);
 }
 
+std::string APlayerState::GetPlayerNameString()
+{
+	static auto GetPlayerNameFn = FindObject<UFunction>(L"/Script/Engine.PlayerState.GetPlayerName");
+
+	if (GetPlayerNameFn)
+	{
+		FString PlayerName;
+		this->ProcessEvent(GetPlayerNameFn, &PlayerName);
+		return PlayerName.ToString();
+	}
+
+	static auto PlayerNameOffset = GetOffset("PlayerName");
+	FString PName = Get<FString>(PlayerNameOffset);
+	return PName.ToString();
+}
+
 int& APlayerState::GetPlayerID()
 {
 	static auto PlayerIDOffset = FindOffsetStruct("/Script/Engine.PlayerState", "PlayerID", false);

@@ -36,8 +36,7 @@ template <typename SetType>
 class TSet
 {
 private:
-    template <typename>
-    friend class TSparseArray;
+    friend TSparseArray;
 
 public:
     typedef TSetElement<SetType> ElementType;

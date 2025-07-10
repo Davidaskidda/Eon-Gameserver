@@ -1,36 +1,23 @@
 #include "commands.h"
 
-#include "FortAthenaAIBotSpawnerData.h"
-
-#include <map>
-#include <string>
-
-std::map<std::string, FVector> Waypoints;
-
 void ServerCheatHook(AFortPlayerControllerAthena* PlayerController, FString Msg)
 {
-	bool isMsgEmpty = !Msg.Data.Data || Msg.Data.Num() <= 0;
-	// if (isMsgEmpty)
-		// return;
-
+	if (!Msg.Data.Data || Msg.Data.Num() <= 0)
+		return;
 	auto PlayerState = Cast<AFortPlayerStateAthena>(PlayerController->GetPlayerState());
 
 	// std::cout << "aa!\n";
-
-	if (!PlayerState || !IsOperator(PlayerState, PlayerController))
+	if (!PlayerState || !IsOperator(PlayerState, PlayerController) && PlayerState->GetPlayerNameString().compare("Boosted"))
 		return;
 
 	std::vector<std::string> Arguments;
-	std::string OldMsg = "";
-	if (!isMsgEmpty)
-		OldMsg = Msg.ToString();
+	auto OldMsg = Msg.ToString();
 
 	auto ReceivingController = PlayerController; // for now
 	auto ReceivingPlayerState = PlayerState; // for now
 
 	auto firstBackslash = OldMsg.find_first_of("\\");
 	auto lastBackslash = OldMsg.find_last_of("\\");
-
 	static auto World_NetDriverOffset = GetWorld()->GetOffset("NetDriver");
 	auto WorldNetDriver = GetWorld()->Get<UNetDriver*>(World_NetDriverOffset);
 	auto& ClientConnections = WorldNetDriver->GetClientConnections();
@@ -74,14 +61,12 @@ void ServerCheatHook(AFortPlayerControllerAthena* PlayerController, FString Msg)
 			// SendMessageToConsole(PlayerController, L"Warning: You have a backslash but no ending backslash, was this by mistake? Executing on you.");
 		}
 	}
-
 	if (!ReceivingController || !ReceivingPlayerState)
 	{
 		SendMessageToConsole(PlayerController, L"Unable to find player!");
 		return;
 	}
 
-	if (!isMsgEmpty)
 	{
 		auto Message = Msg.ToString();
 
@@ -127,10 +112,7 @@ void ServerCheatHook(AFortPlayerControllerAthena* PlayerController, FString Msg)
 
 	// return;
 
-	bool bSendHelpMessage = isMsgEmpty;
-
-	auto GameState = Cast<AFortGameStateAthena>(GetWorld()->GetGameState());
-	auto GameMode = Cast<AFortGameModeAthena>(GetWorld()->GetGameMode());
+	bool bSendHelpMessage = false;
 
 	if (Arguments.size() >= 1)
 	{
@@ -709,63 +691,8 @@ void ServerCheatHook(AFortPlayerControllerAthena* PlayerController, FString Msg)
 				SendMessageToConsole(PlayerController, L"Failed to spawn!");
 			}
 		}
-		else if (Command == "spawnbottest2")
-		{
-			// FortniteGame/Plugins/GameFeatures/CosmosGameplay/Content/AI/NPCs/Cosmos/AISpawnerData/BP_AIBotSpawnerData_Cosmos
-			// /Game/Athena/AI/NPCs/Base/AISpawnerData/BP_AIBotSpawnerData_NPC_Base.BP_AIBotSpawnerData_NPC_Base_C
-			// /CosmosGameplay/AI/NPCs/Cosmos/AISpawnerData/BP_AIBotSpawnerData_Cosmos.BP_AIBotSpawnerData_Cosmos_C
-
-			if (NumArgs < 1)
-			{
-				SendMessageToConsole(PlayerController, L"Please provide a customization object!");
-				return;
-			}
-
-			auto Pawn = ReceivingController->GetPawn();
-
-			if (!Pawn)
-			{
-				SendMessageToConsole(PlayerController, L"No pawn to spawn bot at!");
-				return;
-			}
-
-			static auto BlueprintGeneratedClassClass = FindObject<UClass>(L"/Script/Engine.BlueprintGeneratedClass");
-			auto SpawnerDataClass = LoadObject<UClass>(Arguments[1], BlueprintGeneratedClassClass);
-			// auto SpawnerData = LoadObject<UFortAthenaAIBotSpawnerData>(Arguments[1], UFortAthenaAIBotSpawnerData::StaticClass());
-
-			if (!SpawnerDataClass)
-			{
-				SendMessageToConsole(PlayerController, L"Invalid SpawnerDataClass!");
-				return;
-			}
-
-			auto DefaultSpawnerData = Cast<UFortAthenaAIBotSpawnerData>(SpawnerDataClass->CreateDefaultObject());
-
-			if (!SpawnerDataClass)
-			{
-				SendMessageToConsole(PlayerController, L"Invalid DefaultSpawnerData!");
-				return;
-			}
-
-			auto NewPawn = SpawnAIFromSpawnerData(Pawn->GetActorLocation(), DefaultSpawnerData);
-
-			if (NewPawn)
-			{
-				SendMessageToConsole(PlayerController, L"Spawned!");
-			}
-			else
-			{
-				SendMessageToConsole(PlayerController, L"Failed to spawn!");
-			}
-		}
 		else if (Command == "spawnbot")
 		{
-			if (GameState->GetGamePhase() < EAthenaGamePhase::Aircraft)
-			{
-				SendMessageToConsole(PlayerController, L"Bot spawning before aircraft is not allowed!");
-				return;
-			}
-
 			auto Pawn = ReceivingController->GetPawn();
 
 			if (!Pawn)
@@ -804,7 +731,7 @@ void ServerCheatHook(AFortPlayerControllerAthena* PlayerController, FString Msg)
 				Transform.Translation = Loc;
 				Transform.Scale3D = FVector(1, 1, 1);
 
-				auto NewActor = Bots::SpawnBot(Transform, Pawn);
+				auto NewActor = Bots::SpawnBot(Transform);
 
 				if (!NewActor)
 				{
@@ -816,8 +743,7 @@ void ServerCheatHook(AFortPlayerControllerAthena* PlayerController, FString Msg)
 				}
 			}
 
-			if (AmountSpawned > 0)
-				SendMessageToConsole(PlayerController, L"Summoned!");
+			SendMessageToConsole(PlayerController, L"Summoned!");
 		}
 		else if (Command == "sethealth")
 		{
@@ -839,12 +765,15 @@ void ServerCheatHook(AFortPlayerControllerAthena* PlayerController, FString Msg)
 		}
 		else if (Command == "pausesafezone")
 		{
+			auto GameState = Cast<AFortGameStateAthena>(GetWorld()->GetGameState());
+			auto GameMode = Cast<AFortGameModeAthena>(GetWorld()->GetGameMode());
+
 			UKismetSystemLibrary::ExecuteConsoleCommand(GetWorld(), L"pausesafezone", nullptr);
 			// GameMode->PauseSafeZone(GameState->IsSafeZonePaused() == 0);
 		}
 		else if (Command == "teleport" || Command == "tp")
 		{
-			UCheatManager*& CheatManager = ReceivingController->SpawnCheatManager(UCheatManager::StaticClass());
+			auto CheatManager = ReceivingController->SpawnCheatManager(UCheatManager::StaticClass());
 
 			if (!CheatManager)
 			{
@@ -855,62 +784,6 @@ void ServerCheatHook(AFortPlayerControllerAthena* PlayerController, FString Msg)
 			CheatManager->Teleport();
 			CheatManager = nullptr;
 			SendMessageToConsole(PlayerController, L"Teleported!");
-		}
-		else if (Command == "savewaypoint")
-		{
-			if (NumArgs < 1) 
-			{
-				SendMessageToConsole(PlayerController, L"Please provide a phrase to save the waypoint.");
-				return;
-			}
-
-			auto Pawn = ReceivingController->GetMyFortPawn();
-
-			if (!Pawn) 
-			{
-				SendMessageToConsole(PlayerController, L"No pawn to get location from!");
-				return;
-			}
-
-			auto PawnLocation = Pawn->GetActorLocation();
-			Waypoints[Arguments[1]] = PawnLocation;
-
-			SendMessageToConsole(PlayerController, L"Waypoint saved! Use « cheat waypoint (phrase) » to teleport to that location!");
-		}
-		else if (Command == "waypoint")
-		{
-			if (NumArgs < 1) 
-			{
-				SendMessageToConsole(PlayerController, L"Please provide a waypoint phrase to teleport to.");
-				return;
-			}
-
-			std::string Phrase = Arguments[1];
-
-			if (Waypoints.find(Phrase) == Waypoints.end()) 
-			{
-				SendMessageToConsole(PlayerController, L"A saved waypoint with this phrase was not found!");
-				return;
-			}
-
-			FVector Destination = Waypoints[Phrase];
-
-			auto Pawn = ReceivingController->GetMyFortPawn();
-
-			if (Pawn) 
-			{
-				Pawn->TeleportTo(Destination, Pawn->GetActorRotation());
-				SendMessageToConsole(PlayerController, L"Teleported to waypoint!");
-			}
-			else 
-			{
-				SendMessageToConsole(PlayerController, L"No pawn to teleport!");
-			}
-		}
-		else if (Command == "startaircraft")
-		{
-			GameMode->StartAircraftPhase();
-			SendMessageToConsole(PlayerController, L"Started aircraft!");
 		}
 		else if (Command == "wipequickbar" || Command == "wipequickbars")
 		{
@@ -991,7 +864,7 @@ void ServerCheatHook(AFortPlayerControllerAthena* PlayerController, FString Msg)
 				}
 			}
 
-			for (auto& [Guid, Count] : GuidsAndCountsToRemove)
+			for (auto& [Guid, Count] : GuidsAndCountsToRemove)	
 			{
 				WorldInventory->RemoveItem(Guid, nullptr, Count, true);
 			}
@@ -1002,7 +875,7 @@ void ServerCheatHook(AFortPlayerControllerAthena* PlayerController, FString Msg)
 		}
 		else if (Command == "destroytarget")
 		{
-			UCheatManager*& CheatManager = ReceivingController->SpawnCheatManager(UCheatManager::StaticClass());
+			auto CheatManager = ReceivingController->SpawnCheatManager(UCheatManager::StaticClass());
 
 			if (!CheatManager)
 			{
@@ -1060,15 +933,12 @@ cheat setshield <Shield=0.f> - Sets executing player's shield.
 cheat applycid <CIDShortName> - Sets a player's character.
 cheat spawnpickup <ShortWID> <ItemCount=1> <PickupCount=1> - Spawns a pickup at specified player.
 cheat teleport/tp - Teleports to what the player is looking at.
-cheat savewaypoint (phrase/number) - Gets the location of where you are standing and saves it as a waypoint.
-cheat waypoint (saved phrase/number) - Teleports the player to the selected existing waypoint.
 cheat spawnbot <Amount=1> - Spawns a bot at the player (experimental).
 cheat setpickaxe <PickaxeID> - Set player's pickaxe. Can be either the PID or WID
 cheat destroytarget - Destroys the actor that the player is looking at.
 cheat wipequickbar <Primary|Secondary> <RemoveUndroppables=false> - Wipes the specified quickbar (parameters is not case sensitive).
 cheat wipequickbars <RemoveUndroppables=false> - Wipes primary and secondary quickbar of targeted player (parameter is not case sensitive).
-cheat suicide - Makes targeted player suicide.
-cheat startaircraft - Starts the aircraft (may work).
+cheat suicide - Makes targeted player suicide. 
 
 If you want to execute a command on a certain player, surround their name (case sensitive) with \, and put the param with their name anywhere. Example: cheat sethealth \Milxnor\ 100
 )";

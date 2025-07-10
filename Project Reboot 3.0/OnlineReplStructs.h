@@ -52,4 +52,5 @@ struct FUniqueNetIdRepl // : public FUniqueNetIdWrapper
 	}
 
 	/* bool IsEqual(FUniqueNetIdRepl* Other) */
+	char buf[0x40];
 };

@@ -14,7 +14,6 @@
 #include "FortBotNameSettings.h"
 #include "KismetTextLibrary.h"
 #include "FortAthenaAIBotCustomizationData.h"
-#include "FortAthenaAIBotSpawnerData.h"
 
 using UNavigationSystemV1 = UObject;
 using UNavigationSystemConfig = UObject;
@@ -105,38 +104,6 @@ static bool SetNavigationSystem(AAthenaNavSystemConfigOverride* NavSystemOverrid
     return true;
 }
 
-static inline AFortAthenaMutator_Bots* SpawnBotMutator() //sets up all the classes for phoebe
-{
-   auto GameState = Cast<AFortGameStateAthena>(GetWorld()->GetGameState());
-   auto GameMode = Cast<AFortGameModeAthena>(GetWorld()->GetGameMode());
-
-   static auto BGAClass = FindObject<UClass>(L"/Script/Engine.BlueprintGeneratedClass");
-   auto PhoebeMutatorClass = LoadObject<UClass>(L"/Game/Athena/AI/Phoebe/BP_Phoebe_Mutator.BP_Phoebe_Mutator_C", BGAClass);
-
-   if (!PhoebeMutatorClass)
-   {
-       return nullptr;
-   }
-
-   auto BotMutator = GetWorld()->SpawnActor<AFortAthenaMutator_Bots>(PhoebeMutatorClass);
-
-   if (!BotMutator)
-   {
-       LOG_WARN(LogAI, "Failed to spawn Bot Mutator!");
-       return nullptr;
-   }
-
-   static auto CachedGameModeOffset = BotMutator->GetOffset("CachedGameMode");
-   BotMutator->Get(CachedGameModeOffset) = GameMode;
-
-   static auto CachedGameStateOffset = BotMutator->GetOffset("CachedGameState", false);
-
-   if (CachedGameStateOffset != -1)
-       BotMutator->Get(CachedGameStateOffset) = GameState;
-
-   return BotMutator;
-}
-
 static void SetupServerBotManager()
 {
     auto GameState = Cast<AFortGameStateAthena>(GetWorld()->GetGameState());
@@ -147,10 +114,11 @@ static void SetupServerBotManager()
     if (!FortServerBotManagerClass)
         return;
 
-    UFortServerBotManagerAthena*& ServerBotManager = GameMode->GetServerBotManager();
+    static auto ServerBotManagerOffset = GameMode->GetOffset("ServerBotManager");
+    UObject*& ServerBotManager = GameMode->Get(ServerBotManagerOffset);
 
     if (!ServerBotManager)
-        ServerBotManager = (UFortServerBotManagerAthena*)UGameplayStatics::SpawnObject(FortServerBotManagerClass, GetTransientPackage());
+        ServerBotManager = UGameplayStatics::SpawnObject(FortServerBotManagerClass, GetTransientPackage());
 
     if (ServerBotManager)
     {
@@ -163,20 +131,7 @@ static void SetupServerBotManager()
             ServerBotManager->Get(CachedGameStateOffset) = GameState;
 
         static auto CachedBotMutatorOffset = ServerBotManager->GetOffset("CachedBotMutator");
-        auto BotMutator = FindFirstMutator(FindObject<UClass>(L"/Script/FortniteGame.FortAthenaMutator_Bots"));
-
-        if (!BotMutator)
-        {
-            LOG_WARN(LogAI, "Failed to find Bot Mutator! Spawning it..");
-            BotMutator = SpawnBotMutator();
-        }
-
-        if (!BotMutator)
-        {
-            LOG_ERROR(LogAI, "Failed to spawn or find Bot Mutator!");
-        }
-
-        ServerBotManager->Get(CachedBotMutatorOffset) = BotMutator;
+        ServerBotManager->Get(CachedBotMutatorOffset) = FindFirstMutator(FindObject<UClass>(L"/Script/FortniteGame.FortAthenaMutator_Bots"));
     }
 }
 
@@ -278,42 +233,6 @@ static void SetupNavConfig(const FName& AgentName)
     NavSystemOverride->Get("NavigationSystemConfig") = AthenaNavConfig;
 
     SetNavigationSystem(NavSystemOverride);
-}
-
-static AFortPlayerPawn* SpawnAIFromSpawnerData(const FVector& Location, UFortAthenaAIBotSpawnerData* SpawnerData)
-{
-    auto SpawnParamsComponent = SpawnerData->GetSpawnParamsComponent();
-
-    if (!SpawnParamsComponent)
-    {
-        LOG_INFO(LogAI, "Invalid SpawnParamsComponent for AI!");
-        return nullptr;
-    }
-
-    auto PawnClass = SpawnerData->GetSpawnParamsComponent()->GetPawnClass();
-
-    LOG_INFO(LogAI, "PawnClass: {}", __int64(PawnClass));
-
-    if (!PawnClass)
-    {
-        LOG_INFO(LogAI, "Invalid PawnClass for AI!");
-        return nullptr;
-    }
-
-    LOG_INFO(LogAI, "PawnClass Name: {}", PawnClass->GetFullName());
-    auto Pawn = GetWorld()->SpawnActor<AFortPlayerPawn>(PawnClass, Location);
-
-    if (!Pawn)
-    {
-        LOG_INFO(LogAI, "Failed to spawn pawn!");
-        return nullptr;
-    }
-
-    auto CharacterToApply = SpawnerData->GetCosmeticComponent()->GetCosmeticLoadout()->GetCharacter();
-    LOG_INFO(LogAI, "CharacterToApply: {}", __int64(CharacterToApply));
-    ApplyCID(Pawn, CharacterToApply, true); // bruhh
-
-    return Pawn;
 }
 
 static AFortPlayerPawn* SpawnAIFromCustomizationData(const FVector& Location, UFortAthenaAIBotCustomizationData* CustomizationData)

@@ -512,9 +512,9 @@
                     return _address != address._address;
                 }
 
-                auto RelativeOffset(uint32_t offset, uint32_t off2 = 0) -> Address
+                auto RelativeOffset(uint32_t offset) -> Address
                 {
-                    _address = ((_address + offset + 4 + off2) + *(int32_t*)(_address + offset));
+                    _address = ((_address + offset + 4) + *(int32_t*)(_address + offset));
                     return *this;
                 }
 
@@ -960,8 +960,6 @@
             {
                 const auto scanBytes = _address.GetAs<std::uint8_t*>();
 
-                bool bFound = false;
-
                 for (auto i = (forward ? 1 : -1); forward ? (i < 2048) : (i > -2048); forward ? i++ : i--)
                 {
                     bool found = true;
@@ -973,7 +971,7 @@
                         if (currentOpcode == -1)
                             continue;
 
-                        // LOG_INFO(LogDev, "[{} 0x{:x}] 0x{:x}", i, __int64(&scanBytes[i]) - __int64(GetModuleHandleW(0)), currentOpcode);
+                        // std::cout << std::format("[{} {}] 0x{:x}\n", i, k, currentOpcode);
 
                         found = currentOpcode == scanBytes[i + k];
                     }
@@ -986,15 +984,8 @@
                             return ScanFor(opcodesToFind, forward, toSkip - 1);
                         }
 
-                        bFound = true;
-
                         break;
                     }
-                }
-
-                if (!bFound)
-                {
-                    LOG_ERROR(LogDev, "ScanFor failed!");
                 }
 
                 return *this;
@@ -1019,7 +1010,7 @@
                 return *this;
             }
 
-            auto RelativeOffset(uint32_t offset, uint32_t off2 = 0) -> Scanner
+            auto RelativeOffset(uint32_t offset) -> Scanner
             {
                 if (!_address.Get())
                 {
@@ -1027,7 +1018,7 @@
                     return *this;
                 }
 
-                _address.RelativeOffset(offset, off2);
+                _address.RelativeOffset(offset);
 
                 return *this;
             }
@@ -1447,8 +1438,6 @@
 
         if (!NameRef)
             return 0;
-
-        LOG_INFO(LogDev, "FindFunctionCall NameRef: 0x{:x}", __int64(NameRef) - __int64(GetModuleHandleW(0)));
 
         return Memcury::Scanner(NameRef).ScanFor(Bytes, false).Get();
     }

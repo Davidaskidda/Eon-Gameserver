@@ -5,12 +5,16 @@
 #include "Controller.h"
 #include "Pawn.h"
 #include "UnrealString.h"
-#include "Stack.h"
+#include "GameSession.h"
 
 class AGameModeBase : public AActor // AInfo
 {
 public:
-	static inline bool (*PlayerCanRestartOriginal)(UObject* Context, FFrame& Stack, bool* Ret);
+	AGameSession* GetGameSession()
+	{
+		static auto GameSessionOffset = this->GetOffset("GameSession");
+		return this->Get<AGameSession*>(GameSessionOffset);
+	}
 
 	UClass* GetDefaultPawnClassForController(AController* InController);
 	void ChangeName(AController* Controller, const FString& NewName, bool bNameChange);
@@ -19,6 +23,5 @@ public:
 	void RestartPlayerAtPlayerStart(AController* NewPlayer, AActor* StartSpot);
 	void RestartPlayer(AController* NewPlayer);
 
-	static bool PlayerCanRestartHook(UObject* Context, FFrame& Stack, bool* Ret);
 	static APawn* SpawnDefaultPawnForHook(AGameModeBase* GameMode, AController* NewPlayer, AActor* StartSpot);
 };

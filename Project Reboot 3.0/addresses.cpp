@@ -73,8 +73,6 @@ void Addresses::SetupVersion()
 
 		if (Fortnite_Version >= 16.00 && Fortnite_Version <= 18.40)
 			Engine_Version = 427; // 4.26.1;
-
-		// TODO: Fortnite_CL = X
 	}
 
 	else
@@ -92,18 +90,14 @@ void Addresses::SetupVersion()
 
 	FFastArraySerializer::bNewSerializer = Fortnite_Version >= 8.30;
 
+	if (Fortnite_CL == 3807424)
+		Fortnite_Version = 1.11;
 	if (Fortnite_CL == 3700114)
 		Fortnite_Version = 1.72;
 	if (Fortnite_CL == 3724489)
 		Fortnite_Version = 1.8;
 	if (Fortnite_CL == 3757339)
 		Fortnite_Version = 1.9;
-	if (Fortnite_CL == 3775276)
-		Fortnite_Version = 1.9; // 1.9.1
-	if (Fortnite_CL == 3790078)
-		Fortnite_Version = 1.10;
-	if (Fortnite_CL == 3807424)
-		Fortnite_Version = 1.11;
 	if (Fortnite_CL == 3841827)
 		Fortnite_Version = 2.2;
 	if (Fortnite_CL == 3847564)
@@ -321,9 +315,6 @@ void Addresses::FindAll()
 	LOG_INFO(LogDev, "Finding StartAircraftPhase");
 	Addresses::StartAircraftPhase = FindStartAircraftPhase();
 
-	LOG_INFO(LogDev, "Finding GIsClient");
-	Addresses::GIsClient = FindGIsClient();
-
 	// LOG_INFO(LogDev, "Finding GetSessionInterface");
 	// Addresses::GetSessionInterface = FindGetSessionInterface();
 
@@ -332,9 +323,6 @@ void Addresses::FindAll()
 
 	LOG_INFO(LogDev, "Finished finding!");
 }
-
-#define PRINT_CRITICAL_OFFSET(offset) if (!offset) { LOG_ERROR(LogDev, "Failed to find {}", #offset) } \
-	else { LOG_INFO(LogDev, "{}: 0x{:x}", #offset, offset - __int64(GetModuleHandleW(0))) };
 
 void Addresses::Print()
 {
@@ -394,7 +382,7 @@ void Addresses::Print()
 	LOG_INFO(LogDev, "ApplyCharacterCustomization: 0x{:x}", ApplyCharacterCustomization - Base);
 	LOG_INFO(LogDev, "EnterAircraft: 0x{:x}", EnterAircraft - Base);
 	LOG_INFO(LogDev, "SetTimer: 0x{:x}", SetTimer - Base);
-	PRINT_CRITICAL_OFFSET(PickupInitialize);
+	LOG_INFO(LogDev, "PickupInitialize: 0x{:x}", PickupInitialize - Base);
 	LOG_INFO(LogDev, "FreeEntry: 0x{:x}", FreeEntry - Base);
 	LOG_INFO(LogDev, "FreeArrayOfEntries: 0x{:x}", FreeArrayOfEntries - Base);
 	LOG_INFO(LogDev, "UpdateTrackedAttributesLea: 0x{:x}", UpdateTrackedAttributesLea - Base);
@@ -445,8 +433,6 @@ void Offsets::FindAll()
 		Offsets::ServerReplicateActors = 0x5E;
 	else if (Fortnite_Version >= 15.3 && Engine_Version < 500) // 15.3-18 = 0x5F
 		Offsets::ServerReplicateActors = 0x5F;
-	else if (Fortnite_Version == 19.40)
-		Offsets::ServerReplicateActors = 0x65;
 	else if (std::floor(Fortnite_Version) >= 19 && std::floor(Fortnite_Version) <= 20)
 		Offsets::ServerReplicateActors = 0x66;
 	else if (std::floor(Fortnite_Version) >= 21)
@@ -457,11 +443,6 @@ void Offsets::FindAll()
 		Offsets::NetworkObjectList = 0x3F8;
 		Offsets::ReplicationFrame = 0x288;
 	}
-	if (Engine_Version == 419) // checked 2.4.2 & 2.2 & 1.10 & 1.11
-	{
-		Offsets::NetworkObjectList = 0x490;
-		Offsets::ReplicationFrame = 0x2C8;
-	}
 	if (Fortnite_Version == 1.72)
 	{
 		Offsets::ClientWorldPackageName = 0x336A8;
@@ -469,10 +450,6 @@ void Offsets::FindAll()
 	if (Fortnite_Version == 1.8 || Fortnite_Version == 1.9)
 	{
 		Offsets::ClientWorldPackageName = 0x33788;
-	}
-	if (Fortnite_Version == 1.10)
-	{
-		Offsets::ClientWorldPackageName = 0x337A8;
 	}
 	if (Fortnite_Version == 1.11)
 	{
@@ -491,24 +468,15 @@ void Offsets::FindAll()
 		Offsets::NetworkObjectList = 0x4F0;
 		Offsets::ReplicationFrame = 0x328;
 	}
-	if (Fortnite_Version == 3.1)
+	if (Fortnite_Version == 3.1 || Fortnite_Version == 3.2)
 	{
 		Offsets::NetworkObjectList = 0x4F8;
 		Offsets::ClientWorldPackageName = 0x1818;
 	}
-	if (Fortnite_Version == 3.2)
+	if (Engine_Version == 419) // checked 2.4.2 & 2.2 & 1.11
 	{
-		Offsets::NetworkObjectList = 0x500;
-		Offsets::ClientWorldPackageName = 0x1820;
-	}
-	if (Fortnite_Version == 3.2 || Fortnite_Version == 3.3)
-	{
-		Offsets::ReplicationFrame = 0x330;
-	}
-	if (Fortnite_Version == 3.3)
-	{
-		Offsets::NetworkObjectList = 0x508;
-		Offsets::ClientWorldPackageName = 0x1828;
+		Offsets::NetworkObjectList = 0x490;
+		Offsets::ReplicationFrame = 0x2C8;
 	}
 	if (Fortnite_Version >= 20 && Fortnite_Version < 22)
 	{
@@ -528,9 +496,6 @@ void Offsets::Print()
 	LOG_INFO(LogDev, "Func: 0x{:x}", Func);
 	LOG_INFO(LogDev, "ServerReplicateActors: 0x{:x}", ServerReplicateActors);
 	LOG_INFO(LogDev, "ReplicationFrame: 0x{:x}", ReplicationFrame);
-	LOG_INFO(LogDev, "ClientWorldPackageName: 0x{:x}", ClientWorldPackageName);
-	LOG_INFO(LogDev, "NetworkObjectList: 0x{:x}", NetworkObjectList);
-	LOG_INFO(LogDev, "IsNetRelevantFor: 0x{:x}", IsNetRelevantFor);
 	LOG_INFO(LogDev, "Script: 0x{:x}", Script);
 	LOG_INFO(LogDev, "PropertyClass: 0x{:x}", PropertyClass);
 }
@@ -566,7 +531,7 @@ std::vector<uint64> Addresses::GetFunctionsToReturnTrue()
 {
 	std::vector<uint64> toReturnTrue;
 
-	if (Fortnite_Version == 1.10 || Fortnite_Version == 1.11 || Fortnite_Version >= 2.2 && Fortnite_Version <= 2.4)
+	if (Fortnite_Version == 1.11 || Fortnite_Version >= 2.2 && Fortnite_Version <= 2.4)
 	{
 		toReturnTrue.push_back(Memcury::Scanner::FindPattern("48 89 5C 24 ? 48 89 6C 24 ? 57 41 56 41 57 48 81 EC ? ? ? ? 48 8B 01 49 8B E9 45 0F B6 F8").Get()); // No Reserve
 	}
@@ -612,18 +577,11 @@ std::vector<uint64> Addresses::GetFunctionsToNull()
 	if (Engine_Version == 421)
 	{
 		toNull.push_back(Memcury::Scanner::FindPattern("48 8B C4 48 89 58 08 48 89 70 10 57 48 81 EC ? ? ? ? 48 8B BA ? ? ? ? 48 8B DA 0F 29").Get()); // Pawn Overlap
-
-		std::vector<uint8_t> BytesToFind = Fortnite_Version < 6.3 ? std::vector<uint8_t>{ 0x40, 0x55 } : std::vector<uint8_t>{ 0x48, 0x89, 0x5C };
-
-		toNull.push_back(Memcury::Scanner::FindStringRef(L"Widget Class %s - Running Initialize On Archetype, %s.").ScanFor(BytesToFind, false).Get()); // Widget class
+		toNull.push_back(Memcury::Scanner::FindStringRef(L"Widget Class %s - Running Initialize On Archetype, %s.").ScanFor({ 0x40, 0x55 }, false).Get()); // Widget class
 	}
 
-	if (Engine_Version >= 422 
-		&& Fortnite_Version <= 12.00 // guessed
-		)
+	if (Engine_Version == 422)
 	{
-		// This sig is valid on 7.40, 8.51, 11.31 (3 refs), but on 12.41 it has 1 ref which isn't widget class (12.00 is right).
-		// Also this isn't the actual function but something the widget class thing calls
 		toNull.push_back(Memcury::Scanner::FindPattern("48 89 5C 24 ? 57 48 83 EC 30 48 8B 41 28 48 8B DA 48 8B F9 48 85 C0 74 34 48 8B 4B 08 48 8D").Get()); // widget class
 	}
 
@@ -654,11 +612,6 @@ std::vector<uint64> Addresses::GetFunctionsToNull()
 		toNull.push_back(Memcury::Scanner::FindPattern("48 8B C4 48 89 70 08 48 89 78 10 55 41 54 41 55 41 56 41 57 48 8D 68 A1 48 81 EC ? ? ? ? 45 33 ED").Get()); // collectgarbage
 	}
 
-	if (Fortnite_Version >= 17)
-	{
-		toNull.push_back(Memcury::Scanner::FindPattern("48 89 5C 24 10 48 89 6C 24 20 56 57 41 54 41 56 41 57 48 81 EC ? ? ? ? 65 48 8B 04 25 ? ? ? ? 4C 8B F9").Get()); // Crash after 5 mins
-	}
-
 	if (Engine_Version == 500)
 	{
 		// toNull.push_back(Memcury::Scanner::FindPattern("48 8B C4 55 53 56 57 41 54 41 55 41 56 41 57 48 8D 68 A1 48 81 EC ? ? ? ? 45 33 F6 0F 29 70 A8 44 38 35").Get()); // zone
@@ -666,40 +619,6 @@ std::vector<uint64> Addresses::GetFunctionsToNull()
 		// toNull.push_back(Memcury::Scanner::FindPattern("40 53 48 83 EC 20 8B D9 E8 ? ? ? ? B2 01 8B CB E8").Get()); // GC Caller 1
 		toNull.push_back(Memcury::Scanner::FindPattern("48 89 5C 24 ? 48 89 74 24 ? 48 89 7C 24 ? 55 41 55 41 56 48 8B EC 48 83 EC 50 83 65 28 00 40 B6 05 40 38 35 ? ? ? ? 4C").Get()); // InitializeUI
 	}
-
-	if (Fortnite_Version >= 20)
-	{
-		if (Addresses::GIsClient)
-		{
-			// all from 20.40
-			// 99% of these are renderer crashes
-			// toNull.push_back(Memcury::Scanner::FindPattern("48 89 5C 24 ? 48 89 74 24 ? 55 57 41 56 48 8B EC 48 83 EC 50 83 65 28 00 40 B6 05 40 38 35").Get()); // InitializeUI
-			toNull.push_back(Memcury::Scanner::FindPattern("48 8B C4 48 89 58 08 4C 89 40 18 48 89 50 10 55 56 57 41 54 41 55 41 56 41 57 48 8D 68 98 48 81 EC ? ? ? ? 49 8B 48 20 45 33").Get()); // Calls func below
-			toNull.push_back(Memcury::Scanner::FindPattern("48 89 5C 24 ? 57 48 83 EC 20 48 8B 41 20 48 8B FA 48 8B D9 BA ? ? ? ? 83 78 08 03 0F 8D").Get()); // some constructor crash
-			toNull.push_back(Memcury::Scanner::FindPattern("4C 89 44 24 ? 53 55 56 57 41 54 41 55 41 56 41 57 48 83 EC 68 48 8D 05 ? ? ? ? 0F").Get()); // soem constructor crash (gets called by ^)
-			toNull.push_back(Memcury::Scanner::FindPattern("48 89 5C 24 ? 48 89 6C 24 ? 48 89 74 24 ? 57 48 83 EC 30 48 8B F9 48 8B CA E8").Get());
-			toNull.push_back(Memcury::Scanner::FindPattern("48 89 5C 24 ? 48 89 6C 24 ? 48 89 74 24 ? 57 41 ? 41 ? 48 83 EC 60 45 33 F6 4C 8D ? ? ? ? ? 48 8B DA").Get()); // crash 2 (20.40 & 21.00)
-		}
-	}
-
-#if 0 // untested
-	auto BeginPlayPedestalStrRef = Memcury::Scanner::FindStringRef("AFortTeamMemberPedestal::BeginPlay - Begun play on pedestal %s");
-
-	if (BeginPlayPedestalStrRef.Get())
-	{
-		auto Start = BeginPlayPedestalStrRef.ScanFor({ 0x40, 0x53, 0x41, 0x56 }, false);
-		LOG_INFO(LogDev, "BeginPlayPedestal Start: 0x{:x}", Start);
-		toNull.push_back(Start.Get());
-	}
-#else
-	auto BeginPlayPedestalScanner = Memcury::Scanner::FindPattern("40 53 41 56 48 83 EC 48 48 89 6C 24 ? 48 8B D9 48 89 74 24 ? 48 89 7C 24");
-
-	if (auto BeginPlayPedestal = BeginPlayPedestalScanner.Get())
-	{
-		LOG_INFO(LogDev, "BeginPlayPedestal Start: 0x{:x}", BeginPlayPedestal - __int64(GetModuleHandleW(0)));
-		toNull.push_back(BeginPlayPedestal);
-	}
-#endif
 
 	toNull.push_back(Addresses::ChangeGameSessionId);
 

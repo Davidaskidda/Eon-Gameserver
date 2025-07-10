@@ -2,8 +2,6 @@
 
 #include "reboot.h"
 #include "FortAthenaAIBotCharacterCustomization.h"
-#include "FortPlayerController.h"
-#include "FortPlayerState.h"
 
 class UFortAthenaAIBotCustomizationData : public UObject // UPrimaryDataAsset
 {

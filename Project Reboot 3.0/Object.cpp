@@ -45,43 +45,6 @@ void* UObject::GetProperty(const std::string& ChildName, bool bWarnIfNotFound) c
 	return nullptr;
 }
 
-
-void* UObject::GetPropertyFunc(const std::string& ChildName, bool bWarnIfNotFound)
-{
-	auto Func = (UFunction*)this;
-	void* Property = *(void**)(__int64(Func) + Offsets::Children);
-
-	if (Property)
-	{
-		// LOG_INFO(LogDev, "Reading prop name..");
-
-		std::string PropName = GetFNameOfProp(Property)->ToString();
-
-		// LOG_INFO(LogDev, "PropName: {}", PropName);
-
-		if (PropName == ChildName)
-		{
-			return Property;
-		}
-
-		while (Property)
-		{
-			if (PropName == ChildName)
-			{
-				return Property;
-			}
-
-			Property = GetNext(Property);
-			PropName = Property ? GetFNameOfProp(Property)->ToString() : "";
-		}
-	}
-
-	if (bWarnIfNotFound)
-		LOG_WARN(LogFinder, "Unable to find3{}", ChildName);
-
-	return nullptr;
-}
-
 void* UObject::GetProperty(const std::string& ChildName, bool bWarnIfNotFound)
 {
 	for (auto CurrentClass = ClassPrivate; CurrentClass; CurrentClass = *(UClass**)(__int64(CurrentClass) + Offsets::SuperStruct))
@@ -127,22 +90,12 @@ int UObject::GetOffset(const std::string& ChildName, bool bWarnIfNotFound)
 	if (!Property)
 		return -1;
 
-	return *(int*)(__int64(Property) + Offsets::Offset_Internal);
+	return  *(int*)(__int64(Property) + Offsets::Offset_Internal);
 }
 
 int UObject::GetOffset(const std::string& ChildName, bool bWarnIfNotFound) const
 {
 	auto Property = GetProperty(ChildName, bWarnIfNotFound);
-
-	if (!Property)
-		return -1;
-
-	return  *(int*)(__int64(Property) + Offsets::Offset_Internal);
-}
-
-int UObject::GetOffsetFunc(const std::string& ChildName, bool bWarnIfNotFound)
-{
-	auto Property = GetPropertyFunc(ChildName, bWarnIfNotFound);
 
 	if (!Property)
 		return -1;
@@ -166,12 +119,12 @@ void UObject::SetBitfieldValue(int Offset, uint8_t FieldMask, bool NewValue)
 	SetBitfield(this->GetPtr<PlaceholderBitfield>(Offset), FieldMask, NewValue);
 }
 
-std::string UObject::GetPathName() const
+std::string UObject::GetPathName()
 {
 	return UKismetSystemLibrary::GetPathName(this).ToString();
 }
 
-std::string UObject::GetFullName() const
+std::string UObject::GetFullName()
 {
 	return ClassPrivate ? ClassPrivate->GetName() + " " + UKismetSystemLibrary::GetPathName(this).ToString() : "NoClassPrivate";
 }
@@ -190,7 +143,7 @@ UPackage* UObject::GetOutermost() const
 	}
 }
 
-bool UObject::IsA(UStruct* otherClass) const
+bool UObject::IsA(UStruct* otherClass)
 {
 	UStruct* super = ClassPrivate;
 

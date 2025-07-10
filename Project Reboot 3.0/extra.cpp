@@ -4,7 +4,7 @@
 
 void SetZoneToIndexHook(AFortGameModeAthena* GameModeAthena, int OverridePhaseMaybeIDFK)
 {
-	static auto ZoneDurationsOffset = Fortnite_Version >= 15.20 && Fortnite_Version < 18 ? 0x258
+	static auto ZoneDurationsOffset = Fortnite_Version >= 15 && Fortnite_Version < 18 ? 0x258
 		: std::floor(Fortnite_Version) >= 18 ? 0x248
 		: 0x1F8; // S13-S14
 
@@ -95,17 +95,13 @@ void SetZoneToIndexHook(AFortGameModeAthena* GameModeAthena, int OverridePhaseMa
 		bFilledDurations = true;
 
 		auto CurrentPlaylist = GameState->GetCurrentPlaylist();
+		UCurveTable* FortGameData = nullptr;
+
 		static auto GameDataOffset = CurrentPlaylist->GetOffset("GameData");
-		UCurveTable* FortGameData = CurrentPlaylist ? CurrentPlaylist->Get<TSoftObjectPtr<UCurveTable>>(GameDataOffset).Get() : nullptr;
+		FortGameData = CurrentPlaylist ? CurrentPlaylist->Get<TSoftObjectPtr<UCurveTable>>(GameDataOffset).Get() : nullptr;
 
 		if (!FortGameData)
 			FortGameData = FindObject<UCurveTable>(L"/Game/Balance/AthenaGameData.AthenaGameData");
-
-		if (!FortGameData)
-		{
-			LOG_ERROR(LogZone, "Unable to get FortGameData.");
-			return SetZoneToIndexOriginal(GameModeAthena, OverridePhaseMaybeIDFK);
-		}
 
 		auto ShrinkTimeFName = UKismetStringLibrary::Conv_StringToName(L"Default.SafeZone.ShrinkTime");
 		auto HoldTimeFName = UKismetStringLibrary::Conv_StringToName(L"Default.SafeZone.WaitTime");

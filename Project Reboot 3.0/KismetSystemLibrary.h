@@ -78,12 +78,12 @@ class UKismetSystemLibrary : public UObject
 public:
 	static inline void (*PrintStringOriginal)(UObject* Context, FFrame* Stack, void* Ret);
 
-	static FString GetPathName(const UObject* Object)
+	static FString GetPathName(UObject* Object)
 	{
-		static auto GetPathNameFunction = FindObject<UFunction>(L"/Script/Engine.KismetSystemLibrary.GetPathName");
-		static auto KismetSystemLibrary = FindObject(L"/Script/Engine.Default__KismetSystemLibrary");
+		static auto GetPathNameFunction = FindObject<UFunction>("/Script/Engine.KismetSystemLibrary.GetPathName");
+		static auto KismetSystemLibrary = FindObject("/Script/Engine.Default__KismetSystemLibrary");
 
-		struct { const UObject* Object; FString ReturnValue; } GetPathName_Params{ Object };
+		struct { UObject* Object; FString ReturnValue; } GetPathName_Params{ Object };
 
 		KismetSystemLibrary->ProcessEvent(GetPathNameFunction, &GetPathName_Params);
 
@@ -104,24 +104,6 @@ public:
 		} UKismetSystemLibrary_ExecuteConsoleCommand_Params{WorldContextObject, Command, SpecificPlayer};
 
 		KismetSystemLibrary->ProcessEvent(fn, &UKismetSystemLibrary_ExecuteConsoleCommand_Params);
-	}
-
-	static FTimerHandle K2_SetTimer(UObject* Object, FString FunctionName, float Time, bool bLooping)
-	{
-		struct {
-			UObject* Object;
-			FString FunctionName;
-			float Time;
-			bool bLooping;
-			FTimerHandle ret;
-		} K2_SetTimer_Params{Object, FunctionName, Time, bLooping};
-
-		static auto KismetSystemLibrary = FindObject("/Script/Engine.Default__KismetSystemLibrary");
-		static auto K2_SetTimerFn = FindObject<UFunction>("/Script/Engine.KismetSystemLibrary.K2_SetTimer");
-
-		KismetSystemLibrary->ProcessEvent(K2_SetTimerFn, &K2_SetTimer_Params);
-
-		return K2_SetTimer_Params.ret;
 	}
 
 	static bool LineTraceSingle(UObject* WorldContextObject, FVector Start, FVector End, ETraceTypeQuery TraceChannel, bool bTraceComplex, 

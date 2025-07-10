@@ -152,15 +152,13 @@ inline __int64 GetFunctionIdxOrPtr(UFunction* Function, bool bBreakWhenHitRet = 
 
     auto NativeAddr = __int64(Function->GetFunc());
 
-    LOG_INFO(LogDev, "Getting name!")
-
     auto FuncName = Function->GetName();
 
     std::wstring ValidateWStr = (std::wstring(FuncName.begin(), FuncName.end()) + L"_Validate");
     const wchar_t* ValidateWCStr = ValidateWStr.c_str();
     bool bHasValidateFunc = Memcury::Scanner::FindStringRef(ValidateWCStr, false).Get();
 
-    LOG_INFO(LogDev, "[{}] bHasValidateFunc: {}", Function->GetName(), bHasValidateFunc);
+    // LOG_INFO(LogDev, "[{}] bHasValidateFunc: {}", Function->GetName(), bHasValidateFunc);
     // LOG_INFO(LogDev, "NativeAddr: 0x{:x}", __int64(NativeAddr) - __int64(GetModuleHandleW(0)));
 
     bool bFoundValidate = !bHasValidateFunc;
@@ -255,9 +253,7 @@ inline __int64 GetFunctionIdxOrPtr(UFunction* Function, bool bBreakWhenHitRet = 
         {
             // LOG_INFO(LogDev, "[{}] 0x{:x}", i, *(uint8_t*)CurrentAddy);
 
-            if (*(uint8_t*)CurrentAddy == 0xE8 
-                // || *(uint8_t*)CurrentAddy == 0xE9
-                )
+            if (*(uint8_t*)CurrentAddy == 0xE8)
             {
                 // LOG_INFO(LogDev, "CurrentAddy 0x{:x}", CurrentAddy - __int64(GetModuleHandleW(0)));
                 functionAddy = (CurrentAddy + 1 + 4) + *(int*)(CurrentAddy + 1);
@@ -357,22 +353,14 @@ namespace Hooking
 
         static bool Unhook(void* Addr)
 		{
-			bool bWasUnHookSuccessful = MH_DisableHook((PVOID)Addr) == MH_OK;
-
-            if (bWasUnHookSuccessful)
-            {
-                for (auto it = AllFunctionHooks.begin(); it != AllFunctionHooks.end(); it++) 
-                {
-                    if (it->Original == Addr)
-                    {
-                        AllFunctionHooks.erase(it);
-                        break;
-                    }
-                }
-            }
-
-            return bWasUnHookSuccessful;
+			return MH_DisableHook((PVOID)Addr) == MH_OK;
 		}
+
+        /* static bool Unhook(void** Addr, void* Original) // I got brain damaged
+        {
+            Unhook(Addr);
+            *Addr = Original;
+        } */
 	}
 }
 

@@ -186,34 +186,6 @@ static inline std::vector<Event> Events =
 	),
 	Event
 	(
-		"The Showdown",
-		"/Game/Athena/Prototype/Blueprints/Cattus/BP_CattusDoggus_Scripting.BP_CattusDoggus_Scripting_C",
-		"/Game/Athena/Prototype/Blueprints/Cattus/BP_CattusDoggus_Scripting.BP_CattusDoggus_Scripting_C.LoadCattusLevel", 
-		1,
-		{
-			{
-				true,
-				"/Game/Athena/Prototype/Blueprints/Cattus/BP_CattusDoggus_Scripting.BP_CattusDoggus_Scripting_C.OnReady_C11CA7624A74FBAEC54753A3C2BD4506"
-			}
-		},
-		{
-			{
-				{
-					true,
-					"/Game/Athena/Prototype/Blueprints/Cattus/BP_CattusDoggus_Scripting.BP_CattusDoggus_Scripting_C.startevent"
-				},
-
-				0
-			}
-		},
-
-		"/Game/Athena/Prototype/Blueprints/Cattus/BP_CattusDoggus_Scripting.BP_CattusDoggus_Scripting_C",
-		"/Game/Athena/Playlists/Music/Playlist_Music_High.Playlist_Music_High",
-		9.41,
-		false
-	),
-	Event
-	(
 		"The Unvaulting",
 		"/Game/Athena/Prototype/Blueprints/White/BP_SnowScripting.BP_SnowScripting_C",
 		"/Game/Athena/Prototype/Blueprints/White/BP_SnowScripting.BP_SnowScripting_C.LoadSnowLevel",
@@ -297,7 +269,7 @@ static inline std::vector<Event> Events =
 		},
 
 		"/Junior/Blueprints/BP_Junior_Scripting.BP_Junior_Scripting_C",
-		"/Game/Athena/Playlists/Music/Playlist_Junior_32.Playlist_Junior_32", // ?
+		"/Game/Athena/Playlists/Music/Playlist_Junior_32.Playlist_Junior_32",
 		14.60
 	),
 		Event(
@@ -436,7 +408,7 @@ static inline std::vector<Event> Events =
             {
                 {
                     false,
-                    // "/Buffet/Gameplay/Blueprints/BP_Buffet_Master_Scripting.BP_Buffet_Master_Scripting_C.startevent"
+                    //"/Buffet/Gameplay/Blueprints/BP_Buffet_Master_Scripting.BP_Buffet_Master_Scripting_C.startevent"
                     "/Script/SpecialEventGameplayRuntime.SpecialEventScript.StartEventAtIndex"
                 },
 
@@ -594,7 +566,7 @@ static inline std::string GetEventName()
 	return "";
 }
 
-static inline void LoadEvent(bool* bWereAllSuccessful = nullptr) // did i forget return values existed
+static inline void LoadEvent(bool* bWereAllSuccessful = nullptr)
 {
 	if (bWereAllSuccessful)
 		*bWereAllSuccessful = false;
@@ -638,26 +610,7 @@ static inline void LoadEvent(bool* bWereAllSuccessful = nullptr) // did i forget
 		return; // GetEventLoader handles the printing
 	}
 
-	if (Fortnite_Version == 7.20)
-	{
-		static auto LoadMooneyMapOffset = Loader->GetOffset("LoadMooneyMap");
-		static auto OnRep_LoadMooneyMapFn = FindObject<UFunction>(L"/Game/Athena/Prototype/Blueprints/Mooney/BP_MooneyLoader.BP_MooneyLoader_C.OnRep_LoadMooneyMap");
-		
-		if (LoadMooneyMapOffset == -1 || !OnRep_LoadMooneyMapFn)
-		{
-			if (bWereAllSuccessful)
-				*bWereAllSuccessful = false;
-
-			return;
-		}
-
-		Loader->Get<bool>(LoadMooneyMapOffset) = true;
-		Loader->ProcessEvent(OnRep_LoadMooneyMapFn);
-	}
-	else
-	{
-		Loader->ProcessEvent(LoaderFunction, &OurEvent.AdditionalLoaderParams);
-	}
+	Loader->ProcessEvent(LoaderFunction, &OurEvent.AdditionalLoaderParams);
 }
 
 static inline bool CallOnReadys(bool* bWereAllSuccessful = nullptr)
@@ -796,62 +749,12 @@ static inline void StartEvent()
 
 	CallOnReadys();
 
-	LOG_INFO(LogDev, "Called the on readys!");
-
 	if (Fortnite_Version >= 17.30)
 	{
-		static auto OnRep_RootStartTimeFn = FindObject<UFunction>(L"/Script/SpecialEventGameplayRuntime.SpecialEventScriptMeshActor.OnRep_RootStartTime");
-		static auto MeshRootStartEventFn = FindObject<UFunction>(L"/Script/SpecialEventGameplayRuntime.SpecialEventScriptMeshActor.MeshRootStartEvent");
-		auto SpecialEventScriptMeshActorClass = FindObject<UClass>(L"/Script/SpecialEventGameplayRuntime.SpecialEventScriptMeshActor");
+		static auto OnRep_RootStartTimeFn = FindObject<UFunction>("/Script/SpecialEventGameplayRuntime.SpecialEventScriptMeshActor.OnRep_RootStartTime");
+		static auto MeshRootStartEventFn = FindObject<UFunction>("/Script/SpecialEventGameplayRuntime.SpecialEventScriptMeshActor.MeshRootStartEvent");
+		auto SpecialEventScriptMeshActorClass = FindObject<UClass>("/Script/SpecialEventGameplayRuntime.SpecialEventScriptMeshActor");
 		auto AllSpecialEventScriptMeshActors = UGameplayStatics::GetAllActorsOfClass(GetWorld(), SpecialEventScriptMeshActorClass);
-
-		if (Fortnite_Version == 17.50)
-		{
-			auto KiwiMasterScripting = FindObject<UObject>(L"/Kiwi/Levels/Kiwi_P.Kiwi_P.PersistentLevel.BP_Kiwi_Master_Scripting_2");
-			LOG_INFO(LogDev, "KiwiMasterScripting: {}", __int64(KiwiMasterScripting));
-
-			float SecondsSinceEventBegan = 0;
-
-			auto EventPlaylist = GetEventPlaylist();
-
-			struct { UObject* GameState; UObject* Playlist; FGameplayTagContainer PlaylistContextTags; } OnReadyParams{ Cast<AFortGameStateAthena>(GetWorld()->GetGameState()), EventPlaylist };
-			if (EventPlaylist)
-			{
-				static auto GameplayTagContainerOffset = EventPlaylist->GetOffset("GameplayTagContainer");
-				OnReadyParams.PlaylistContextTags = EventPlaylist->Get<FGameplayTagContainer>(GameplayTagContainerOffset);
-			}
-			else
-			{
-				OnReadyParams.PlaylistContextTags = FGameplayTagContainer();
-			}
-
-			auto KiwiMasterScriptingOnReady = FindObject<UFunction>(L"/Kiwi/Gameplay/BP_Kiwi_Master_Scripting.BP_Kiwi_Master_Scripting_C.OnReady_F1A32853487CB7603278E6847A5F2625");
-			LOG_INFO(LogDev, "KiwiMasterScriptingOnReady: {}", __int64(KiwiMasterScriptingOnReady));
-			KiwiMasterScripting->ProcessEvent(KiwiMasterScriptingOnReady, &OnReadyParams);
-
-			// auto eventscript = FindObject("/Kiwi/Levels/Kiwi_P.Kiwi_P:PersistentLevel.Kiwi_EventScript_2");
-			auto KiwiOnReadyIdk = FindObject<UFunction>("/Kiwi/Gameplay/Kiwi_EventScript.Kiwi_EventScript_C.OnReady_F51BF8E143832CE6C552938B26BEFA93");
-			auto KiwiLoadAssets = FindObject<UFunction>("/Kiwi/Gameplay/Kiwi_EventScript.Kiwi_EventScript_C.LoadKiwiAssets");
-			auto StartEventAtIndex = FindObject<UFunction>("/Script/SpecialEventGameplayRuntime.SpecialEventScript.StartEventAtIndex");
-			auto BP_OnScriptReady = FindObject<UFunction>("/Kiwi/Gameplay/Kiwi_EventScript.Kiwi_EventScript_C.BP_OnScriptReady");
-
-			LOG_INFO(LogDev, "KiwiLoadAssets: {}", __int64(KiwiLoadAssets));
-			LOG_INFO(LogDev, "BP_OnScriptReady: {}", __int64(BP_OnScriptReady));
-			LOG_INFO(LogDev, "StartEventAtIndex: {}", __int64(StartEventAtIndex));
-
-			// EventScripting->ProcessEvent(KiwiOnReadyIdk, &bbparms);
-			EventScripting->ProcessEvent(KiwiLoadAssets, &OnReadyParams);
-			LOG_INFO(LogDev, "CAlled KiwiLoadAssets!");
-			EventScripting->ProcessEvent(BP_OnScriptReady, &OnReadyParams);
-			LOG_INFO(LogDev, "CAlled BP_OnScriptReady!");
-			int InStartingIndex = 0;
-			// EventScripting->ProcessEvent(StartEventAtIndex, &InStartingIndex);
-			LOG_INFO(LogDev, "CAlled StartEventAtIndex!");
-
-			auto KiwiStartEvent = FindObject<UFunction>("/Kiwi/Gameplay/BP_Kiwi_Master_Scripting.BP_Kiwi_Master_Scripting_C.startevent");
-			LOG_INFO(LogDev, "KiwiStartEvent: {}", __int64(KiwiStartEvent));
-			KiwiMasterScripting->ProcessEvent(KiwiStartEvent, &SecondsSinceEventBegan);
-		}
 
 		if (AllSpecialEventScriptMeshActors.Num() > 0)
 		{

@@ -20,13 +20,6 @@
 ///////////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////////
-// Uncomment if source location logging is not needed.
-// This will prevent spdlog from using __FILE__, __LINE__ and SPDLOG_FUNCTION
-//
-// #define SPDLOG_NO_SOURCE_LOC
-///////////////////////////////////////////////////////////////////////////////
-
-///////////////////////////////////////////////////////////////////////////////
 // Uncomment if thread id logging is not needed (i.e. no %t in the log pattern).
 // This will prevent spdlog from querying the thread id on each log call.
 //
@@ -78,13 +71,12 @@
 // In this case spdlog will try to include <fmt/format.h> so set your -I flag
 // accordingly.
 //
-#ifndef SPDLOG_FMT_EXTERNAL
-#define SPDLOG_FMT_EXTERNAL
-#endif
+// #define SPDLOG_FMT_EXTERNAL
 ///////////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////////
-// Uncomment to use C++20 std::format instead of fmt.
+// Uncomment to use C++20 std::format instead of fmt. This removes compile
+// time checking of format strings, but doesn't depend on the fmt library.
 //
 // #define SPDLOG_USE_STD_FORMAT
 ///////////////////////////////////////////////////////////////////////////////
@@ -104,15 +96,7 @@
 ///////////////////////////////////////////////////////////////////////////////
 // Uncomment to customize level names (e.g. "MY TRACE")
 //
-// #define SPDLOG_LEVEL_NAMES { "MY TRACE", "MY DEBUG", "MY INFO", "MY WARNING", "MY ERROR", "MY
-// CRITICAL", "OFF" }
-//
-// For C++17 use string_view_literals:
-//
-// #include <string_view>
-// using namespace std::string_view_literals;
-// #define SPDLOG_LEVEL_NAMES { "MY TRACE"sv, "MY DEBUG"sv, "MY INFO"sv, "MY WARNING"sv, "MY ERROR"sv, "MY
-// CRITICAL"sv, "OFF"sv }
+// #define SPDLOG_LEVEL_NAMES { "MY TRACE", "MY DEBUG", "MY INFO", "MY WARNING", "MY ERROR", "MY CRITICAL", "OFF" }
 ///////////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////////

@@ -78,11 +78,8 @@ void UWorld::Listen()
 	*(UNetDriver**)(__int64(LevelCollections.AtPtr(1, LevelCollectionSize)) + 0x10) = NewNetDriver;
 
 	FString Error;
-	
-	AWorldSettings* WorldSettings = GetWorldSettings();
-	const bool bReuseAddressAndPort = false; // WorldSettings ? WorldSettings->bReuseAddressAndPort : false;
 
-	if (!NewNetDriver->InitListen(GetWorld(), URL, bReuseAddressAndPort, Error))
+	if (!NewNetDriver->InitListen(GetWorld(), URL, false, Error))
 	{
 		LOG_ERROR(LogNet, "Failed to init listen!");
 		return;

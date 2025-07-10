@@ -24,13 +24,6 @@ template <typename T = UObject>
 static inline T* FindObject(const TCHAR* Name, UClass* Class = nullptr, UObject* Outer = nullptr)
 {
 	auto res = (T*)StaticFindObject/*<T>*/(Class, Outer, Name);
-	/*
-	if (!res)
-	{
-		std::wstring NameWStr = std::wstring(Name);
-		LOG_WARN(LogDev, "Failed to find object: {}", std::string(NameWStr.begin(), NameWStr.end()));
-	}
-	*/
 	return res;
 }
 
@@ -48,8 +41,7 @@ static inline T* LoadObject(const TCHAR* Name, UClass* Class = T::StaticClass(),
 
 	if (!Object)
 	{
-		std::wstring NameWStr = std::wstring(Name);
-		LOG_WARN(LogDev, "Failed to load object: {}!", std::string(NameWStr.begin(), NameWStr.end()));
+		LOG_WARN(LogDev, "Failed to load object!");
 	}
 
 	return Object;
@@ -94,8 +86,6 @@ static inline class UWorld* GetWorld()
 	static auto GameViewportOffset = Engine->GetOffset("GameViewport");
 	auto GameViewport = Engine->Get<UObject*>(GameViewportOffset);
 
-	if (!GameViewport) return nullptr;
-
 	static auto WorldOffset = GameViewport->GetOffset("World");
 
 	return GameViewport->Get<class UWorld*>(WorldOffset);
@@ -132,8 +122,8 @@ static inline UObject* GetLocalPlayerController()
 	return LocalPlayer->Get(PlayerControllerOffset);
 }
 
-template <typename T, bool bCheckType = true>
-static __forceinline T* Cast(UObject* Object)
+template <typename T>
+static __forceinline T* Cast(UObject* Object, bool bCheckType = true)
 {
 	if (bCheckType)
 	{

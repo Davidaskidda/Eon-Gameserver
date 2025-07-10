@@ -14,8 +14,6 @@ class AFortWeap_BuildingTool : public AFortWeap_BuildingToolBase
 class AFortWeap_EditingTool : public AFortWeap_BuildingToolBase
 {
 public:
-	static inline void (*originalOnRep_EditActor)(AFortWeap_EditingTool*);
-
 	ABuildingSMActor*& GetEditActor()
 	{
 		static auto EditActorOffset = GetOffset("EditActor");

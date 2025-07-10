@@ -3,6 +3,8 @@
 #include "PlayerController.h"
 #include "FortInventory.h"
 #include "FortPawn.h"
+#include "OnlineReplStructs.h"
+#include "Text.h"
 
 #include "Rotator.h"
 #include "BuildingSMActor.h"
@@ -40,63 +42,13 @@ struct FFortAthenaLoadout
 	}
 };
 
-enum class EFortWeaponUpgradeCosts : uint8_t
-{
-	NotSet = 0,
-	WoodUncommon = 1,
-	WoodRare = 2,
-	WoodVeryRare = 3,
-	WoodSuperRare = 4,
-	MetalUncommon = 5,
-	MetalRare = 6,
-	MetalVeryRare = 7,
-	MetalSuperRare = 8,
-	BrickUncommon = 9,
-	BrickRare = 10,
-	BrickVeryRare = 11,
-	BrickSuperRare = 12,
-	HorizontalWoodCommon = 13,
-	HorizontalWoodUncommon = 14,
-	HorizontalWoodRare = 15,
-	HorizontalWoodVeryRare = 16,
-	HorizontalWoodSuperRare = 17,
-	HorizontalMetalCommon = 18,
-	HorizontalMetalUncommon = 19,
-	HorizontalMetalRare = 20,
-	HorizontalMetalVeryRare = 21,
-	HorizontalMetalSuperRare = 22,
-	HorizontalBrickCommon = 23,
-	HorizontalBrickUncommon = 24,
-	HorizontalBrickRare = 25,
-	HorizontalBrickVeryRare = 26,
-	HorizontalBrickSuperRare = 27,
-	EFortWeaponUpgradeCosts_MAX = 28,
-};
-
-enum class EFortWeaponUpgradeDirection : uint8
-{
-	NotSet = 0,
-	Vertical = 1,
-	Horizontal = 2,
-	EFortWeaponUpgradeDirection_MAX = 3,
-};
-
-enum class EInteractionBeingAttempted : uint8
-{
-	FirstInteraction = 0,
-	SecondInteraction = 1,
-	AllInteraction = 2,
-	EInteractionBeingAttempted_MAX = 3,
-};
-
-using UAthenaSprayItemDefinition = UObject;
-
 class AFortPlayerController : public APlayerController
 {
 public:
+	/*static inline void (*ClientWasKickedOriginal)(AFortPlayerController* PlayerController, const FText* Reason);*/
 	static inline void (*ClientOnPawnDiedOriginal)(AFortPlayerController* PlayerController, void* DeathReport);
 	static inline void (*ServerCreateBuildingActorOriginal)(UObject* Context, FFrame* Stack, void* Ret);
-	static inline void (*ServerAttemptInteractOriginal)(UObject* Context, FFrame* Stack);
+	static inline void (*ServerAttemptInteractOriginal)(UObject* Context, FFrame* Stack, void* Ret);
 	static inline void (*ServerEditBuildingActorOriginal)(UObject* Context, FFrame& Stack, void* Ret);
 	static inline void (*DropSpecificItemOriginal)(UObject* Context, FFrame& Stack, void* Ret);
 	static inline AActor* (*SpawnToyInstanceOriginal)(UObject* Context, FFrame* Stack, AActor** Ret);
@@ -133,10 +85,6 @@ public:
 	FFortAthenaLoadout* GetCosmeticLoadout()
 	{
 		static auto CosmeticLoadoutPCOffset = GetCosmeticLoadoutOffset();
-
-		if (CosmeticLoadoutPCOffset == -1)
-			return nullptr;
-
 		auto CosmeticLoadout = this->GetPtr<FFortAthenaLoadout>(CosmeticLoadoutPCOffset);
 
 		return CosmeticLoadout;
@@ -149,7 +97,7 @@ public:
 	
 		static auto WeaponDefinitionOffset = FindOffsetStruct("/Script/FortniteGame.AthenaPickaxeItemDefinition", "WeaponDefinition");
 
-		auto PickaxeDefinition = /* WeaponDefinitionOffset != -1 && */ CosmeticLoadoutPickaxe ? CosmeticLoadoutPickaxe->Get<UFortItemDefinition*>(WeaponDefinitionOffset)
+		auto PickaxeDefinition = CosmeticLoadoutPickaxe ? CosmeticLoadoutPickaxe->Get<UFortItemDefinition*>(WeaponDefinitionOffset)
 			: FindObject<UFortItemDefinition>(L"/Game/Athena/Items/Weapons/WID_Harvest_Pickaxe_Athena_C_T01.WID_Harvest_Pickaxe_Athena_C_T01");
 
 		auto WorldInventory = GetWorldInventory();
@@ -177,6 +125,15 @@ public:
 		return Ret;
 	}
 
+	FUniqueNetIdRepl GetGameAccountId()
+	{
+		static auto GetGameAccountId = FindObject<UFunction>("/Script/FortniteGame.FortPlayerController.GetGameAccountId");
+
+		FUniqueNetIdRepl Ret = {};
+		this->ProcessEvent(GetGameAccountId, &Ret);
+		return Ret;
+	}
+
 	bool& ShouldTryPickupSwap()
 	{
 		static auto bTryPickupSwapOffset = GetOffset("bTryPickupSwap");
@@ -189,8 +146,9 @@ public:
 		return bTryPickupSwapOffset != -1;
 	}
 
+	// void ClientWasKicked(AFortPlayerController* PlayerController, FText Reason);
+
 	void ClientEquipItem(const FGuid& ItemGuid, bool bForceExecution);
-	void ClientForceCancelBuildingTool();
 
 	bool DoesBuildFree();
 	void DropAllItems(const std::vector<UFortItemDefinition*>& IgnoreItemDefs, bool bIgnoreSecondaryQuickbar = false, bool bRemoveIfNotDroppable = false, bool RemovePickaxe = false);
@@ -198,10 +156,12 @@ public:
 
 	static void ServerSuicideHook(AFortPlayerController* PlayerController);
 
+	/*static void ClientWasKickedHook(AFortPlayerController* PlayerController, const FText* Reason);*/
+
 	static void ServerLoadingScreenDroppedHook(UObject* Context, FFrame* Stack, void* Ret);
 	static void ServerRepairBuildingActorHook(AFortPlayerController* PlayerController, ABuildingSMActor* BuildingActorToRepair);
 	static void ServerExecuteInventoryItemHook(AFortPlayerController* PlayerController, FGuid ItemGuid);
-	static void ServerAttemptInteractHook(UObject* Context, FFrame* Stack);
+	static void ServerAttemptInteractHook(UObject* Context, FFrame* Stack, void* Ret);
 
 	static void ServerAttemptAircraftJumpHook(AFortPlayerController* PC, FRotator ClientRotation);
 	// static void ServerCreateBuildingActorHook(AFortPlayerController* PlayerController, FCreateBuildingActorData CreateBuildingData);
@@ -212,7 +172,6 @@ public:
 	static void ServerDropAllItemsHook(AFortPlayerController* PlayerController, UFortItemDefinition* IgnoreItemDef);
 
 	static void ServerAttemptInventoryDropHook(AFortPlayerController* PlayerController, FGuid ItemGuid, int Count);
-	static void ServerPlaySprayItemHook(AFortPlayerController* PlayerController, UAthenaSprayItemDefinition* SprayAsset);
 	static void ServerPlayEmoteItemHook(AFortPlayerController* PlayerController, UObject* EmoteAsset);
 	static void ClientOnPawnDiedHook(AFortPlayerController* PlayerController, void* DeathReport);
 

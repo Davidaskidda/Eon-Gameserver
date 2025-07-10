@@ -8,6 +8,12 @@ void UCheatManager::Teleport()
 	this->ProcessEvent(TeleportFn);
 }
 
+void UCheatManager::Fly()
+{
+	static auto Fly = FindObject<UFunction>(L"/Script/Engine.CheatManager.Fly");
+	this->ProcessEvent(Fly);
+}
+
 void UCheatManager::DestroyTarget()
 {
 	static auto DestroyTargetFn = FindObject<UFunction>("/Script/Engine.CheatManager.DestroyTarget");

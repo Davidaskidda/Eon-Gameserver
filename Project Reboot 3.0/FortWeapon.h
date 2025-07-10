@@ -29,6 +29,18 @@ public:
 		return Get<int>(AmmoCountOffset);
 	}
 
+	float& LastFireTime()
+	{
+		static auto LastFireTimeOffset = GetOffset("LastFireTime");
+		return Get<float>(LastFireTimeOffset);
+	}
+
+	float& LastFireTimeVerified()
+	{
+		static auto LastFireTimeVerifiedOffset = GetOffset("LastFireTimeVerified");
+		return Get<float>(LastFireTimeVerifiedOffset);
+	}
+
 	static void OnPlayImpactFXHook(AFortWeapon* Weapon, __int64 HitResult, uint8_t ImpactPhysicalSurface, UObject* SpawnedPSC);
 	static void ServerReleaseWeaponAbilityHook(UObject* Context, FFrame* Stack, void* Ret);
 

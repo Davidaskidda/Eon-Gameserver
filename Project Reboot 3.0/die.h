@@ -2,6 +2,11 @@
 
 #include "reboot.h"
 #include "FortGameModeAthena.h"
+#include "GameplayStatics.h"
+#include "CurveTable.h"
+#include "KismetStringLibrary.h"
+#include "DataTableFunctionLibrary.h"
+#include "FortPlaysetItemDefinition.h"
 
 extern inline void (*SetZoneToIndexOriginal)(AFortGameModeAthena* GameModeAthena, int OverridePhaseMaybeIDFK) = nullptr;
 
@@ -151,8 +156,7 @@ static inline void ProcessEventHook(UObject* Object, UFunction* Function, void* 
 			!strstr(FunctionName.c_str(), "ServerTriggerCombatEvent") &&
 			!strstr(FunctionName.c_str(), "SpinCubeTimeline__UpdateFunc") &&
 			!strstr(ObjectName.c_str(), "FortPhysicsObjectComponent") &&
-			!strstr(FunctionName.c_str(), "GetTextValue") &&
-			!strstr(FunctionName.c_str(), "ExecuteUbergraph_BGA_Petrol_Pickup"))
+			!strstr(FunctionName.c_str(), "GetTextValue"))
 		{
 			LOG_INFO(LogDev, "Function called: {} with {}", FunctionFullName, ObjectName);
 		}

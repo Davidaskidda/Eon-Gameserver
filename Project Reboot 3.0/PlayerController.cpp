@@ -3,10 +3,16 @@
 
 #include "reboot.h"
 
-void APlayerController::ServerChangeName(const FString& S)
+void APlayerController::ServerChangeName(FString& S)
 {
 	static auto ServerChangeNameFn = FindObject<UFunction>(L"/Script/Engine.PlayerController.ServerChangeName");
-	this->ProcessEvent(ServerChangeNameFn, (FString*)&S);
+	this->ProcessEvent(ServerChangeNameFn, &S);
+}
+
+void APlayerController::ClientReturnToMainMenu(struct FString ReturnReason)
+{
+	static auto ClientReturnToMainMenu = FindObject<UFunction>("/Script/Engine.PlayerController.ClientReturnToMainMenu");
+	this->ProcessEvent(ClientReturnToMainMenu, &ReturnReason);
 }
 
 void APlayerController::SetPlayerIsWaiting(bool NewValue)
@@ -14,13 +20,6 @@ void APlayerController::SetPlayerIsWaiting(bool NewValue)
 	static auto bPlayerIsWaitingOffset = GetOffset("bPlayerIsWaiting");
 	static auto bPlayerIsWaitingFieldMask = GetFieldMask(this->GetProperty("bPlayerIsWaiting"));
 	this->SetBitfieldValue(bPlayerIsWaitingOffset, bPlayerIsWaitingFieldMask, NewValue);
-}
-
-bool APlayerController::IsPlayerWaiting()
-{
-	static auto bPlayerIsWaitingOffset = GetOffset("bPlayerIsWaiting");
-	static auto bPlayerIsWaitingFieldMask = GetFieldMask(this->GetProperty("bPlayerIsWaiting"));
-	return this->ReadBitfieldValue(bPlayerIsWaitingOffset, bPlayerIsWaitingFieldMask);
 }
 
 UCheatManager*& APlayerController::SpawnCheatManager(UClass* CheatManagerClass)

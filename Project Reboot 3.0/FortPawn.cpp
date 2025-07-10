@@ -9,13 +9,13 @@ AFortWeapon* AFortPawn::EquipWeaponDefinition(UFortWeaponItemDefinition* WeaponD
 
 	FGuid TrackerGuid{};
 
-	if (Fortnite_Version < 15.50)
+	if (Fortnite_Version < 16)
 	{
 		struct { UObject* Def; FGuid Guid; AFortWeapon* Wep; } params{ WeaponData, ItemEntryGuid };
 		this->ProcessEvent(EquipWeaponDefinitionFn, &params);
 		return params.Wep;
 	}
-	else if (Fortnite_Version >= 15.50 && Fortnite_Version < 17)
+	else if (std::floor(Fortnite_Version) == 16)
 	{
 		struct { UObject* Def; FGuid Guid; FGuid TrackerGuid; AFortWeapon* Wep; } S16_params{ WeaponData, ItemEntryGuid, TrackerGuid };
 		this->ProcessEvent(EquipWeaponDefinitionFn, &S16_params);
@@ -92,14 +92,6 @@ void AFortPawn::SetShield(float NewShield)
 
 	if (SetShieldFn)
 		this->ProcessEvent(SetShieldFn, &NewShield);
-}
-
-void AFortPawn::SetMaxShield(float NewShieldVal)
-{
-	static auto SetMaxShieldFn = FindObject<UFunction>("/Script/FortniteGame.FortPawn.SetMaxShield");
-
-	if (SetMaxShieldFn)
-		this->ProcessEvent(SetMaxShieldFn, &NewShieldVal);
 }
 
 void AFortPawn::NetMulticast_Athena_BatchedDamageCuesHook(UObject* Context, FFrame* Stack, void* Ret)

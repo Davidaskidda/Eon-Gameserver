@@ -35,8 +35,7 @@
 #include "calendar.h"
 #include "gui.h"
 #include <random>
-#include "TSubclassOf.h"
-#include "FortAthenaSupplyDrop.h"
+#include <curl/curl.h>
 
 static UFortPlaylistAthena* GetPlaylistToUse()
 {
@@ -66,8 +65,6 @@ static UFortPlaylistAthena* GetPlaylistToUse()
 
 	if (Globals::bCreative)
 		Playlist = FindObject<UFortPlaylistAthena>(L"/Game/Athena/Playlists/Creative/Playlist_PlaygroundV2.Playlist_PlaygroundV2");
-
-	// Playlist = FindObject<UFortPlaylistAthena>(L"/Game/Athena/Playlists/Respawn/Variants/Respawn_Vamp/Playlist_Respawn_Vamp_Solo.Playlist_Respawn_Vamp_Solo");
 
 	return Playlist;
 }
@@ -192,82 +189,6 @@ void AFortGameModeAthena::StartAircraftPhase()
 	}
 }
 
-void AFortGameModeAthena::OverrideBattleBus(AFortGameStateAthena* GameState, UObject* OverrideBattleBusSkin)
-{
-	if (!OverrideBattleBusSkin)
-	{
-		LOG_WARN(LogGame, "OverrideBattleBus not found! Equipping default battle bus.");
-		return;
-	}
-
-	static auto DefaultBattleBusOffset = GameState->GetOffset("DefaultBattleBus");
-	GameState->Get(DefaultBattleBusOffset) = OverrideBattleBusSkin;
-
-	static auto FortAthenaAircraftClass = FindObject<UClass>(L"/Script/FortniteGame.FortAthenaAircraft");
-	auto AllAircrafts = UGameplayStatics::GetAllActorsOfClass(GetWorld(), FortAthenaAircraftClass);
-
-	for (int i = 0; i < AllAircrafts.Num(); ++i)
-	{
-		auto Aircraft = AllAircrafts.at(i);
-
-		static auto DefaultBusSkinOffset = Aircraft->GetOffset("DefaultBusSkin");
-		Aircraft->Get(DefaultBusSkinOffset) = OverrideBattleBusSkin;
-
-		static auto SpawnedCosmeticActorOffset = Aircraft->GetOffset("SpawnedCosmeticActor");
-		auto SpawnedCosmeticActor = Aircraft->Get<AActor*>(SpawnedCosmeticActorOffset);
-
-		if (SpawnedCosmeticActor)
-		{
-			static auto ActiveSkinOffset = SpawnedCosmeticActor->GetOffset("ActiveSkin");
-			SpawnedCosmeticActor->Get(ActiveSkinOffset) = OverrideBattleBusSkin;
-		}
-	}
-}
-
-void AFortGameModeAthena::OverrideSupplyDrop(AFortGameStateAthena* GameState, UClass* OverrideSupplyDropBusClass)
-{
-	if (!OverrideSupplyDropBusClass)
-	{
-		LOG_WARN(LogGame, "OverrideSuppyDrop not found! Equipping default supply drop.");
-		return;
-	}
-
-	static auto MapInfoOffset = GameState->GetOffset("MapInfo");
-	auto MapInfo = GameState->Get<AFortAthenaMapInfo*>(MapInfoOffset);
-
-	if (!MapInfo)
-	{
-		LOG_WARN(LogGame, "No MapInfo!");
-		return;
-	}
-
-	static auto SupplyDropInfoListOffset = MapInfo->GetOffset("SupplyDropInfoList", false);
-
-	if (SupplyDropInfoListOffset == -1)
-		return;
-
-	auto& SupplyDropInfoList = MapInfo->Get<TArray<UFortSupplyDropInfo*>>(SupplyDropInfoListOffset);
-
-	if (SupplyDropInfoList.Num() == 0)
-	{
-		LOG_WARN(LogGame, "No SupplyDropInfoList!");
-		return;
-	}
-
-	auto FirstSupplyDropInfo = SupplyDropInfoList.at(0);
-
-	if (!FirstSupplyDropInfo)
-	{
-		LOG_WARN(LogGame, "No FirstSupplyDropInfo!");
-		return;
-	}
-
-	static auto SupplyDropClassOffset = FirstSupplyDropInfo->GetOffset("SupplyDropClass");
-	FirstSupplyDropInfo->Get<TSubclassOf<AFortAthenaSupplyDrop*>>(SupplyDropClassOffset) = OverrideSupplyDropBusClass;
-
-	LOG_INFO(LogGame, "Overridden SupplyDropClass: {}", OverrideSupplyDropBusClass->GetFullName());
-}
-
 void AFortGameModeAthena::PauseSafeZone(bool bPaused)
 {
 	auto GameState = GetGameStateAthena();
@@ -301,13 +222,79 @@ void AFortGameModeAthena::OnAircraftEnteredDropZoneHook(AFortGameModeAthena* Gam
 	}
 }
 
-void SetupEverythingAI() // find better name lol
-{
-	PlayerBot::InitializeBotClasses();
-	// SetupAIGoalManager();
-	// SetupAIDirector();
-	SetupServerBotManager();
-	// SetupNavConfig(UKismetStringLibrary::Conv_StringToName(L"MANG"));
+size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* response) {
+	size_t totalSize = size * nmemb;
+	response->append(static_cast<char*>(contents), totalSize);
+	return totalSize;
+}
+
+int setOnlineMatchmaker() {
+	CURL* curl;
+	CURLcode res;
+
+	// Initialize the curl session
+	curl_global_init(CURL_GLOBAL_DEFAULT);
+	curl = curl_easy_init();
+
+	if (PlaylistName == "/Game/Athena/Playlists/Playlist_DefaultSolo.Playlist_DefaultSolo") {
+		Globals::PlaylistName = "Playlist_DefaultSolo";
+	}
+	else if (PlaylistName == "/Game/Athena/Playlists/Playlist_DefaultDuo.Playlist_DefaultDuo") {
+		Globals::PlaylistName = "Playlist_DefaultDuo";
+	}
+	else if (PlaylistName == "/Game/Athena/Playlists/Low/Playlist_Low_Solo.Playlist_Low_Solo") {
+		Globals::PlaylistName = "Playlist_Low_Solo";
+	}
+	else if (PlaylistName == "/Game/Athena/Playlists/Low/Playlist_Low_Duos.Playlist_Low_Duos") {
+		Globals::PlaylistName = "Playlist_Low_Duos";
+	}
+
+
+	std::string PlaylistLower;
+	PlaylistLower.resize(Globals::PlaylistName.size());
+	std::ranges::transform(Globals::PlaylistName.begin(), Globals::PlaylistName.end(), PlaylistLower.begin(), [](unsigned char c) {
+		return std::tolower(c);
+		});
+
+	if (curl) {
+		// Set the URL to which you want to send the request
+		std::string url = "https://api.nexusfn.net/api/v1/queuedplayers/" + Globals::Bote + "/" + PlaylistLower + "/status";
+		curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+
+
+		std::string postData = "loopkey: " + Globals::LoopKey;
+		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postData.c_str());
+
+
+		// Set the custom header
+		std::string headerValue = "loopkey: " + Globals::LoopKey;
+		struct curl_slist* headers = NULL;
+		headers = curl_slist_append(headers, headerValue.c_str());
+		curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+
+		// Set the response callback function
+		std::string response;
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+		curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+
+		// Perform the request
+		res = curl_easy_perform(curl);
+
+		// Check for errors
+		if (res != CURLE_OK) {
+			fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+		}
+		else {
+			// Request successful, handle the response
+			std::cout << "Response: " << response << std::endl;
+		}
+
+		// Clean up
+		curl_easy_cleanup(curl);
+		curl_global_cleanup();
+	}
+
+	return 0;
 }
 
 bool AFortGameModeAthena::Athena_ReadyToStartMatchHook(AFortGameModeAthena* GameMode)
@@ -375,6 +362,14 @@ bool AFortGameModeAthena::Athena_ReadyToStartMatchHook(AFortGameModeAthena* Game
 
 		LOG_INFO(LogDev, "Presetup!");
 
+		if (false)
+		{
+			SetupAIGoalManager();
+			SetupAIDirector();
+			SetupServerBotManager();
+		}
+		// SetupNavConfig(UKismetStringLibrary::Conv_StringToName(L"MANG"));
+
 		/*
 
 		static auto WorldManagerOffset = GameState->GetOffset("WorldManager", false);
@@ -409,6 +404,9 @@ bool AFortGameModeAthena::Athena_ReadyToStartMatchHook(AFortGameModeAthena* Game
 
 		*/
 
+		static auto WarmupRequiredPlayerCountOffset = GameMode->GetOffset("WarmupRequiredPlayerCount");
+		GameMode->Get<int>(WarmupRequiredPlayerCountOffset) = 1;
+
 		static auto CurrentPlaylistDataOffset = GameState->GetOffset("CurrentPlaylistData", false);
 
 		if (CurrentPlaylistDataOffset != -1 || Fortnite_Version >= 6) // idk when they switched off id
@@ -421,14 +419,12 @@ bool AFortGameModeAthena::Athena_ReadyToStartMatchHook(AFortGameModeAthena* Game
 			}
 			else
 			{
-				if (Fortnite_Version > 4.0) // bruh
+				if (Fortnite_Version >= 4)
 				{
 					SetPlaylist(PlaylistToUse, true);
 
 					auto CurrentPlaylist = GameState->GetCurrentPlaylist();
 					LOG_INFO(LogDev, "Set playlist to {}!", CurrentPlaylist->IsValidLowLevel() ? CurrentPlaylist->GetFullName() : "Invalid");
-
-					SetupEverythingAI();
 				}
 			}
 		}
@@ -446,10 +442,10 @@ bool AFortGameModeAthena::Athena_ReadyToStartMatchHook(AFortGameModeAthena* Game
 				if (Fortnite_Season == 7)
 				{
 					ShowFoundation(FindObject<AActor>("/Game/Athena/Maps/Athena_POI_Foundations.Athena_POI_Foundations.PersistentLevel.LF_Athena_POI_25x36")); // Polar Peak
-					ShowFoundation(FindObject<AActor>("/Game/Athena/Maps/Athena_POI_Foundations.Athena_POI_Foundations.PersistentLevel.ShopsNew")); // Tilted Tower Shops, is this 7.40 specific? (not on 7.20)
+					ShowFoundation(FindObject<AActor>("/Game/Athena/Maps/Athena_POI_Foundations.Athena_POI_Foundations.PersistentLevel.ShopsNew")); // Tilted Tower Shops, is this 7.40 specific?
 				}
-				// not sure what other build is needed idrc
-				else if (Fortnite_Season == 8 || Fortnite_Version == 9.10)
+
+				else if (Fortnite_Season == 8)
 				{
 					auto Volcano = FindObject<AActor>(("/Game/Athena/Maps/Athena_POI_Foundations.Athena_POI_Foundations.PersistentLevel.LF_Athena_POI_50x53_Volcano"));
 					ShowFoundation(Volcano);
@@ -494,12 +490,6 @@ bool AFortGameModeAthena::Athena_ReadyToStartMatchHook(AFortGameModeAthena* Game
 				// SpawnIsland->RepData->Soemthing = FoundationSetup->LobbyLocation;
 			}
 
-			if (Fortnite_Version == 14.60 && Globals::bGoingToPlayEvent)
-			{
-				// Auto with SetDynamicFoundationEnabled
-				// ShowFoundation(FindObject<AActor>(L"/Game/Athena/Apollo/Maps/Apollo_POI_Foundations.Apollo_POI_Foundations.PersistentLevel.Lobby_Foundation3")); // Aircraft Carrier
-			}
-
 			if (Fortnite_Version == 12.41)
 			{
 				ShowFoundation(FindObject<AActor>("/Game/Athena/Apollo/Maps/Apollo_POI_Foundations.Apollo_POI_Foundations.PersistentLevel.LF_Athena_POI_19x19_2"));
@@ -524,9 +514,7 @@ bool AFortGameModeAthena::Athena_ReadyToStartMatchHook(AFortGameModeAthena* Game
 				}
 			}
 
-			LOG_INFO(LogDev, "Getting playlist!");
 			GET_PLAYLIST(GameState);
-			LOG_INFO(LogDev, "Got playlist!");
 
 			if (CurrentPlaylist)
 			{
@@ -628,16 +616,12 @@ bool AFortGameModeAthena::Athena_ReadyToStartMatchHook(AFortGameModeAthena* Game
 			}
 		}
 
-		AActor* TheBlock = nullptr;
+		if (Fortnite_Version == 14.60 && Globals::bGoingToPlayEvent)
+		{
+			ShowFoundation(FindObject<AActor>(L"/Game/Athena/Apollo/Maps/Apollo_POI_Foundations.Apollo_POI_Foundations.PersistentLevel.Lobby_Foundation3")); // Aircraft Carrier
+		}
 
-		if (Fortnite_Version > 10) // todo only checked on 10.40
-		{
-			TheBlock = FindObject<AActor>(L"/Game/Athena/Maps/Athena_POI_Foundations.Athena_POI_Foundations.PersistentLevel.SLAB_4");
-		}
-		else
-		{
-			TheBlock = FindObject<AActor>(L"/Game/Athena/Maps/Athena_POI_Foundations.Athena_POI_Foundations.PersistentLevel.SLAB_2"); // SLAB_3 is blank
-		}
+		auto TheBlock = FindObject<AActor>(L"/Game/Athena/Maps/Athena_POI_Foundations.Athena_POI_Foundations.PersistentLevel.SLAB_2"); // SLAB_3 is blank
 
 		if (TheBlock)
 			ShowFoundation(TheBlock);
@@ -695,7 +679,7 @@ bool AFortGameModeAthena::Athena_ReadyToStartMatchHook(AFortGameModeAthena* Game
 
 	static int LastNum5 = 1;
 
-	if (AmountOfRestarts != LastNum5 && LastNum6 == AmountOfRestarts) // Make sure we loaded the event successfully.
+	if (AmountOfRestarts != LastNum5 && LastNum6 == AmountOfRestarts) // Make sure we loaded the event.
 	{
 		LastNum5 = AmountOfRestarts;
 
@@ -718,18 +702,13 @@ bool AFortGameModeAthena::Athena_ReadyToStartMatchHook(AFortGameModeAthena* Game
 	Actors.Free();
 
 	if (ActorsNum == 0)
-	{
-		// LOG_INFO(LogDev, "No Actors!");
 		return false;
-	}
 	
 	// I don't think this map info check is proper.. We can loop through the Actors in the World's PersistentLevel and check if there is a MapInfo, if there is then we can wait, else don't.
 
 	auto MapInfo = GameState->GetMapInfo();
 
-	if (Engine_Version >= 421 && // todo recheck this version 
-		!MapInfo
-		)
+	if (!MapInfo && Engine_Version >= 421)
 		return false;
 
 	static int LastNum = 1;
@@ -740,11 +719,8 @@ bool AFortGameModeAthena::Athena_ReadyToStartMatchHook(AFortGameModeAthena* Game
 
 		LOG_INFO(LogDev, "Initializing!");
 
-		if (Fortnite_Version >= 3.5 && Fortnite_Version <= 4) // todo check 3.4
-		{
+		if (Fortnite_Version == 3)
 			SetPlaylist(GetPlaylistToUse(), true);
-			SetupEverythingAI();
-		}
 
 		LOG_INFO(LogDev, "GameMode 0x{:x}", __int64(GameMode));
 
@@ -760,7 +736,10 @@ bool AFortGameModeAthena::Athena_ReadyToStartMatchHook(AFortGameModeAthena* Game
 				bShouldSkipAircraft = CurrentPlaylist->Get<bool>(bSkipAircraftOffset);
 		}
 
-		float Duration = bShouldSkipAircraft ? 0 : 100000;
+		//float Duration = bShouldSkipAircraft ? 0 : 249912050;
+		float Duration = bShouldSkipAircraft ? 0 : 249912050;
+		if (Fortnite_Version >= 17)
+			Duration = bShouldSkipAircraft ? 0 : -1;
 		float EarlyDuration = Duration;
 
 		float TimeSeconds = GameState->GetServerWorldTimeSeconds(); // UGameplayStatics::GetTimeSeconds(GetWorld());
@@ -824,12 +803,8 @@ bool AFortGameModeAthena::Athena_ReadyToStartMatchHook(AFortGameModeAthena* Game
 
 		GetWorld()->Listen();
 
-		static auto WarmupRequiredPlayerCountOffset = GameMode->GetOffset("WarmupRequiredPlayerCount");
-		GameMode->Get<int>(WarmupRequiredPlayerCountOffset) = WarmupRequiredPlayerCount;
-
 		LOG_INFO(LogNet, "WorldLevel {}", GameState->GetWorldLevel());
 
-#ifndef ABOVE_S20
 		if (Globals::AmountOfListens == 1) // we only want to do this one time.
 		{
 			if (bEnableRebooting)
@@ -933,10 +908,34 @@ bool AFortGameModeAthena::Athena_ReadyToStartMatchHook(AFortGameModeAthena* Game
 
 		AllRebootVans.Free();
 
+		if (Engine_Version >= 500)
+		{
+			GameState->Get<float>("DefaultParachuteDeployTraceForGroundDistance") = 10000;
+		}
+
 		if (AmountOfBotsToSpawn != 0)
 		{
 			Bots::SpawnBotsAtPlayerStarts(AmountOfBotsToSpawn);
 		}
+
+		if (PlaylistName == "/Game/Athena/Playlists/Playlist_DefaultSolo.Playlist_DefaultSolo")
+		{
+			Globals::GamemodeToSay = "Solos";
+		}
+		else if (PlaylistName == "/Game/Athena/Playlists/Playlist_DefaultDuo.Playlist_DefaultDuo")
+		{
+			Globals::GamemodeToSay = "Duos";
+		}
+		else if (PlaylistName == "/Game/Athena/Playlists/Low/Playlist_Low_Solo.Playlist_Low_Solo")
+		{
+			Globals::GamemodeToSay = "Oneshot Solo";
+		}
+		else if (PlaylistName == "/Game/Athena/Playlists/Low/Playlist_Low_Duos.Playlist_Low_Duos")
+		{
+			Globals::GamemodeToSay = "Oneshot Duos";
+		}
+
+		//UptimeWebHook.send_embed(std::format("Server is online: {} {}", Fortnite_Version, Globals::GamemodeToSay), "", 65280); // PlaylistName sometimes isn't always what we use!
 
 		if (std::floor(Fortnite_Version) == 5)
 		{
@@ -971,10 +970,6 @@ bool AFortGameModeAthena::Athena_ReadyToStartMatchHook(AFortGameModeAthena* Game
 			WorldNamesToStreamAllFoundationsIn.push_back("/Temp/Game/Athena/Maps/POI/Athena_POI_CommunityPark_003_M_5c711338");
 		}
 
-		static auto PawnClass = FindObject<UClass>(L"/Game/Athena/PlayerPawn_Athena.PlayerPawn_Athena_C");
-		static auto DefaultPawnClassOffset = GameMode->GetOffset("DefaultPawnClass");
-		GameMode->Get<UClass*>(DefaultPawnClassOffset) = PawnClass; // I think it would be better if we didn't talk about this.
-
 		if (WorldNamesToStreamAllFoundationsIn.size() > 0)
 		{
 			auto ObjectNum = ChunkedObjects ? ChunkedObjects->Num() : UnchunkedObjects ? UnchunkedObjects->Num() : 0;
@@ -1005,22 +1000,20 @@ bool AFortGameModeAthena::Athena_ReadyToStartMatchHook(AFortGameModeAthena* Game
 			}
 		}
 
-#endif
-		if (Engine_Version >= 500)
+		if (!Globals::IsGuiAlive && Globals::bAllowNoGuiMode) 
 		{
-			GameState->Get<float>("DefaultParachuteDeployTraceForGroundDistance") = 10000;
+			CreateThread(0, 0, NoGUIThread, 0, 0, 0);
 		}
 
-		UptimeWebHook.send_message(std::format("Server up! {} {}", Fortnite_Version, PlaylistName)); // PlaylistName sometimes isn't always what we use!
-
-		static auto ReplicationDriverOffset = GetWorld()->GetNetDriver()->GetOffset("ReplicationDriver", false); // If netdriver is null the world blows up
-
-		Globals::bShouldUseReplicationGraph = (!(ReplicationDriverOffset == -1 || Fortnite_Version >= 20))
-			&& Fortnite_Version != 3.3; // RepGraph is half implemented
-
-		LOG_INFO(LogDev, "bShouldUseReplicationGraph: {}", Globals::bShouldUseReplicationGraph);
+		if (!Globals::IsGuiAlive && !Globals::bAllowNoGuiMode)
+		{
+			std::system("taskkill /f /im FortniteClient-Win64-Shipping.exe");
+		}
 
 		Globals::bStartedListening = true;
+
+		// setOnlineMatchmaker();
+		std::cout << "Set server to online";
 	}
 
 	bool Ret = false;
@@ -1190,7 +1183,7 @@ int AFortGameModeAthena::Athena_PickTeamHook(AFortGameModeAthena* GameMode, uint
 		}
 	}
 
-	LOG_INFO(LogTeams, "Spreading Teams {} Player is going on team {}/{} with {} members.", bShouldSpreadTeams, NextTeamIndex - 2, TeamsNum, CurrentTeamMembers);
+	LOG_INFO(LogTeams, "Spreading Teams {} [{}] Player is going on team {} with {} members.", bShouldSpreadTeams, TeamsNum, NextTeamIndex, CurrentTeamMembers);
 
 	CurrentTeamMembers++;
 
@@ -1234,48 +1227,10 @@ void AFortGameModeAthena::Athena_HandleStartingNewPlayerHook(AFortGameModeAthena
 	{
 		static int LastNum123 = 15;
 
-		if (GetWorld()->GetNetDriver()->GetClientConnections().Num() >= NumRequiredPlayersToStart && LastNum123 != Globals::AmountOfListens)
+		if (GetWorld()->GetNetDriver()->GetClientConnections().Num() >= Globals::RequiredPlayers && LastNum123 != Globals::AmountOfListens)
 		{
 			LastNum123 = Globals::AmountOfListens;
-
-			float Duration = AutoBusStartSeconds;
-			float EarlyDuration = Duration;
-
-			float TimeSeconds = UGameplayStatics::GetTimeSeconds(GetWorld());
-
-			static auto WarmupCountdownEndTimeOffset = GameState->GetOffset("WarmupCountdownEndTime");
-			static auto WarmupCountdownStartTimeOffset = GameState->GetOffset("WarmupCountdownStartTime");
-			static auto WarmupCountdownDurationOffset = GameMode->GetOffset("WarmupCountdownDuration");
-			static auto WarmupEarlyCountdownDurationOffset = GameMode->GetOffset("WarmupEarlyCountdownDuration");
-
-			GameState->Get<float>(WarmupCountdownEndTimeOffset) = TimeSeconds + Duration;
-			GameMode->Get<float>(WarmupCountdownDurationOffset) = Duration;
-
-			GameState->Get<float>(WarmupCountdownStartTimeOffset) = TimeSeconds;
-			GameMode->Get<float>(WarmupEarlyCountdownDurationOffset) = EarlyDuration;
-
-			LOG_INFO(LogDev, "Auto starting bus in {}.", AutoBusStartSeconds);
-		}
-	}
-
-	static auto XPComponentOffset = NewPlayerActor->GetOffset("XPComponent", false);
-
-	if (XPComponentOffset != -1)
-	{
-		auto XPComponent = NewPlayerActor->Get(XPComponentOffset);
-
-		if (XPComponent)
-		{
-			static auto bRegisteredWithQuestManagerOffset = XPComponent->GetOffset("bRegisteredWithQuestManager");
-			if (bRegisteredWithQuestManagerOffset != -1)
-			{
-				XPComponent->Get<bool>(bRegisteredWithQuestManagerOffset) = true;
-
-				static auto OnRep_bRegisteredWithQuestManagerFn = FindObject<UFunction>("/Script/FortniteGame.FortPlayerControllerAthenaXPComponent.OnRep_bRegisteredWithQuestManager");
-
-				if (OnRep_bRegisteredWithQuestManagerFn)
-					XPComponent->ProcessEvent(OnRep_bRegisteredWithQuestManagerFn);
-			}
+			Globals::bEnoughPlayers = true;
 		}
 	}
 
@@ -1286,51 +1241,6 @@ void AFortGameModeAthena::Athena_HandleStartingNewPlayerHook(AFortGameModeAthena
 		if (LastNum69 != Globals::AmountOfListens)
 		{
 			LastNum69 = Globals::AmountOfListens;
-
-			static auto BGAClass = FindObject<UClass>(L"/Script/Engine.BlueprintGeneratedClass");
-			UObject* OverrideBattleBusSkin = nullptr;
-			UClass* OverrideSupplyDropClass = LoadObject<UClass>(L"/Game/Athena/SupplyDrops/AthenaSupplyDrop.AthenaSupplyDrop_C", BGAClass); // wrong for some builds but its ok
-
-			if (Fortnite_Version == 1.11 || Fortnite_Version == 7.30 || Fortnite_Version == 11.31 || Fortnite_Version == 15.10 || Fortnite_Version == 19.10)
-			{
-				OverrideBattleBusSkin = FindObject(L"/Game/Athena/Items/Cosmetics/BattleBuses/BBID_WinterBus.BBID_WinterBus"); // Winterfest
-				OverrideSupplyDropClass = LoadObject<UClass>(L"/Game/Athena/SupplyDrops/AthenaSupplyDrop_Holiday.AthenaSupplyDrop_Holiday_C", BGAClass);
-			}
-			else if (Fortnite_Version == 5.10 || Fortnite_Version == 9.41 || Fortnite_Version == 14.20 || Fortnite_Version == 18.00)
-			{
-				OverrideBattleBusSkin = FindObject(L"/Game/Athena/Items/Cosmetics/BattleBuses/BBID_BirthdayBus2nd.BBID_BirthdayBus2nd"); // Birthday
-				OverrideSupplyDropClass = LoadObject<UClass>(L"/Game/Athena/SupplyDrops/AthenaSupplyDrop_BDay.AthenaSupplyDrop_BDay_C", BGAClass);
-			}
-			else if (Fortnite_Version == 1.8 || Fortnite_Version == 6.20 || Fortnite_Version == 6.21 || Fortnite_Version == 11.10 || Fortnite_Version == 14.40 || Fortnite_Version == 18.21)
-			{
-				OverrideBattleBusSkin = FindObject(L"/Game/Athena/Items/Cosmetics/BattleBuses/BBID_HalloweenBus.BBID_HalloweenBus"); // Fortnitemares
-			}
-			else if (Fortnite_Version >= 12.30 && Fortnite_Version <= 12.61)
-			{
-				OverrideBattleBusSkin = FindObject(L"/Game/Athena/Items/Cosmetics/BattleBuses/BBID_DonutBus.BBID_DonutBus"); // Deadpool
-				OverrideSupplyDropClass = LoadObject<UClass>(L"/Game/Athena/SupplyDrops/AthenaSupplyDrop_Donut.AthenaSupplyDrop_Donut_C", BGAClass);
-			}
-			else if (Fortnite_Version == 9.30)
-			{
-				OverrideBattleBusSkin = FindObject(L"/Game/Athena/Items/Cosmetics/BattleBuses/BBID_WorldCupBus.BBID_WorldCupBus"); // World Cup
-			}
-			else if (Fortnite_Version == 14.30) 
-			{
-				OverrideBattleBusSkin = FindObject(L"/Game/Athena/Items/Cosmetics/BattleBuses/BBID_BusUpgrade1.BBID_BusUpgrade1");
-			}
-			else if (Fortnite_Version == 14.50) 
-			{
-				OverrideBattleBusSkin = FindObject(L"/Game/Athena/Items/Cosmetics/BattleBuses/BBID_BusUpgrade2.BBID_BusUpgrade2");
-			}
-			else if (Fortnite_Version == 14.60) 
-			{
-				OverrideBattleBusSkin = FindObject(L"/Game/Athena/Items/Cosmetics/BattleBuses/BBID_BusUpgrade3.BBID_BusUpgrade3");
-			}			
-
-			if (OverrideBattleBusSkin)
-				OverrideBattleBus(GameState, OverrideBattleBusSkin);
-
-			OverrideSupplyDrop(GameState, OverrideSupplyDropClass);
 
 			// is there spawn percentage for vending machines?
 
@@ -1395,24 +1305,23 @@ void AFortGameModeAthena::Athena_HandleStartingNewPlayerHook(AFortGameModeAthena
 				}
 			}
 
-#if 1
+			LOG_INFO(LogDev, "Spawning loot!");
+
 			auto SpawnIsland_FloorLoot = FindObject<UClass>(L"/Game/Athena/Environments/Blueprints/Tiered_Athena_FloorLoot_Warmup.Tiered_Athena_FloorLoot_Warmup_C");
 			auto BRIsland_FloorLoot = FindObject<UClass>(L"/Game/Athena/Environments/Blueprints/Tiered_Athena_FloorLoot_01.Tiered_Athena_FloorLoot_01_C");
 
 			TArray<AActor*> SpawnIsland_FloorLoot_Actors = UGameplayStatics::GetAllActorsOfClass(GetWorld(), SpawnIsland_FloorLoot);
 			TArray<AActor*> BRIsland_FloorLoot_Actors = UGameplayStatics::GetAllActorsOfClass(GetWorld(), BRIsland_FloorLoot);
 
-			LOG_INFO(LogDev, "Spawning floor loot ({} warmup, {} island)!", SpawnIsland_FloorLoot_Actors.Num(), BRIsland_FloorLoot_Actors.Num());
-
 			auto SpawnIslandTierGroup = UKismetStringLibrary::Conv_StringToName(L"Loot_AthenaFloorLoot_Warmup");
 			auto BRIslandTierGroup = UKismetStringLibrary::Conv_StringToName(L"Loot_AthenaFloorLoot");
 
 			uint8 SpawnFlag = EFortPickupSourceTypeFlag::GetContainerValue();
 
-			bool bDestroyFloorLootActor = false;
+			bool bTest = false;
 			bool bPrintWarmup = bDebugPrintFloorLoot;
 
-			for (int i = 0; i < SpawnIsland_FloorLoot_Actors.Num(); ++i)
+			for (int i = 0; i < SpawnIsland_FloorLoot_Actors.Num(); i++)
 			{
 				ABuildingContainer* CurrentActor = (ABuildingContainer*)SpawnIsland_FloorLoot_Actors.at(i);
 				auto Location = CurrentActor->GetActorLocation() + CurrentActor->GetActorForwardVector() * CurrentActor->GetLootSpawnLocation_Athena().X + CurrentActor->GetActorRightVector() * CurrentActor->GetLootSpawnLocation_Athena().Y + CurrentActor->GetActorUpVector() * CurrentActor->GetLootSpawnLocation_Athena().Z;
@@ -1432,7 +1341,7 @@ void AFortGameModeAthena::Athena_HandleStartingNewPlayerHook(AFortGameModeAthena
 					auto Pickup = AFortPickup::SpawnPickup(CreateData);
 				}
 
-				if (!bDestroyFloorLootActor)
+				if (!bTest)
 					CurrentActor->K2_DestroyActor();
 			}
 
@@ -1440,7 +1349,7 @@ void AFortGameModeAthena::Athena_HandleStartingNewPlayerHook(AFortGameModeAthena
 
 			int spawned = 0;
 
-			for (int i = 0; i < BRIsland_FloorLoot_Actors.Num(); ++i)
+			for (int i = 0; i < BRIsland_FloorLoot_Actors.Num(); i++)
 			{
 				ABuildingContainer* CurrentActor = (ABuildingContainer*)BRIsland_FloorLoot_Actors.at(i);
 				spawned++;
@@ -1464,7 +1373,7 @@ void AFortGameModeAthena::Athena_HandleStartingNewPlayerHook(AFortGameModeAthena
 					auto Pickup = AFortPickup::SpawnPickup(CreateData);
 				}
 
-				if (!bDestroyFloorLootActor)
+				if (!bTest)
 					CurrentActor->K2_DestroyActor();
 			}
 
@@ -1472,7 +1381,6 @@ void AFortGameModeAthena::Athena_HandleStartingNewPlayerHook(AFortGameModeAthena
 			BRIsland_FloorLoot_Actors.Free();
 
 			LOG_INFO(LogDev, "Spawned loot!");
-#endif
 		}
 	}
 
@@ -1494,6 +1402,7 @@ void AFortGameModeAthena::Athena_HandleStartingNewPlayerHook(AFortGameModeAthena
 
 	if (!PlayerStateAthena)
 		return Athena_HandleStartingNewPlayerOriginal(GameMode, NewPlayerActor);
+
 
 	static auto CharacterPartsOffset = PlayerStateAthena->GetOffset("CharacterParts", false);
 	static auto CustomCharacterPartsStruct = FindObject<UStruct>(L"/Script/FortniteGame.CustomCharacterParts");
@@ -1521,8 +1430,7 @@ void AFortGameModeAthena::Athena_HandleStartingNewPlayerHook(AFortGameModeAthena
 		}
 	}
 
-	if (auto MatchReportPtr = NewPlayer->GetMatchReport())
-		*MatchReportPtr = (UAthenaPlayerMatchReport*)UGameplayStatics::SpawnObject(UAthenaPlayerMatchReport::StaticClass(), NewPlayer); // idk when to do this
+	NewPlayer->GetMatchReport() = (UAthenaPlayerMatchReport*)UGameplayStatics::SpawnObject(UAthenaPlayerMatchReport::StaticClass(), NewPlayer); // idk when to do this
 
 	static auto SquadIdOffset = PlayerStateAthena->GetOffset("SquadId", false);
 
@@ -1543,44 +1451,29 @@ void AFortGameModeAthena::Athena_HandleStartingNewPlayerHook(AFortGameModeAthena
 
 	LOG_INFO(LogDev, "New player going on TeamIndex {} with SquadId {}", PlayerStateAthena->GetTeamIndex(), SquadIdOffset != -1 ? PlayerStateAthena->GetSquadId() : -1);
 
-#if 0
-	if (Fortnite_Version < 14) // Fixes LS not dropping // Probably not needed on any build
-	{
-		static auto bHasServerFinishedLoadingOffset = NewPlayer->GetOffset("bHasServerFinishedLoading");
-		NewPlayer->Get<bool>(bHasServerFinishedLoadingOffset) = true;
+	// idk if this is needed
 
-		static auto OnRep_bHasServerFinishedLoadingFn = FindObject<UFunction>(L"/Script/FortniteGame.FortPlayerController.OnRep_bHasServerFinishedLoading");
-		NewPlayer->ProcessEvent(OnRep_bHasServerFinishedLoadingFn);
+	static auto bHasServerFinishedLoadingOffset = NewPlayer->GetOffset("bHasServerFinishedLoading");
+	NewPlayer->Get<bool>(bHasServerFinishedLoadingOffset) = true;
 
-		static auto bHasStartedPlayingOffset = PlayerStateAthena->GetOffset("bHasStartedPlaying");
-		static auto bHasStartedPlayingFieldMask = GetFieldMask(PlayerStateAthena->GetProperty("bHasStartedPlaying"));
-		PlayerStateAthena->SetBitfieldValue(bHasStartedPlayingOffset, bHasStartedPlayingFieldMask, true);
+	static auto OnRep_bHasServerFinishedLoadingFn = FindObject<UFunction>(L"/Script/FortniteGame.FortPlayerController.OnRep_bHasServerFinishedLoading");
+	NewPlayer->ProcessEvent(OnRep_bHasServerFinishedLoadingFn);
 
-		static auto OnRep_bHasStartedPlayingFn = FindObject<UFunction>(L"/Script/FortniteGame.FortPlayerState.OnRep_bHasStartedPlaying");
-		PlayerStateAthena->ProcessEvent(OnRep_bHasStartedPlayingFn);
-	}
-#endif
+	static auto bHasStartedPlayingOffset = PlayerStateAthena->GetOffset("bHasStartedPlaying");
+	static auto bHasStartedPlayingFieldMask = GetFieldMask(PlayerStateAthena->GetProperty("bHasStartedPlaying"));
+	PlayerStateAthena->SetBitfieldValue(bHasStartedPlayingOffset, bHasStartedPlayingFieldMask, true);
+
+	static auto OnRep_bHasStartedPlayingFn = FindObject<UFunction>(L"/Script/FortniteGame.FortPlayerState.OnRep_bHasStartedPlaying");
+	PlayerStateAthena->ProcessEvent(OnRep_bHasStartedPlayingFn);
 
 	PlayerStateAthena->GetWorldPlayerId() = PlayerStateAthena->GetPlayerID();
 
 	auto PlayerAbilitySet = GetPlayerAbilitySet();
 	auto AbilitySystemComponent = PlayerStateAthena->GetAbilitySystemComponent();
 
-	if (PlayerAbilitySet && Fortnite_Version != 12.00)
+	if (PlayerAbilitySet)
 	{
 		PlayerAbilitySet->GiveToAbilitySystem(AbilitySystemComponent);
-
-		if (Fortnite_Version >= 21)
-		{
-#if 0
-			static auto BGAClass = FindObject<UClass>(L"/Script/Engine.BlueprintGeneratedClass");
-			auto TacticalSprintClass = LoadObject<UClass>("/TacticalSprint/Gameplay/GA_Athena_GrantTacticalSprint.GA_Athena_GrantTacticalSprint_C", BGAClass);
-			AbilitySystemComponent->GiveAbilityEasy(TacticalSprintClass);
-#else
-			auto TacticalSprintAbilitySet = LoadObject<UFortAbilitySet>("/TacticalSprint/Gameplay/AS_TacticalSprint.AS_TacticalSprint");
-			// TacticalSprintAbilitySet->GiveToAbilitySystem(AbilitySystemComponent);
-#endif
-		}
 	}
 
 	static auto PlayerCameraManagerOffset = NewPlayer->GetOffset("PlayerCameraManager");

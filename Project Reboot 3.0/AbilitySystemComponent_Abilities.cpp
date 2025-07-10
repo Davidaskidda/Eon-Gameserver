@@ -24,6 +24,14 @@ void LoopSpecs(UAbilitySystemComponent* AbilitySystemComponent, std::function<vo
 		}
 	}
 }
+//
+//FGameplayEffectContextHandle UAbilitySystemComponent::MakeEffectContext()
+//{
+//	static auto MakeEffectContextFn = FindObject<UFunction>("/Script/GameplayAbilities.AbilitySystemComponent.MakeEffectContext");
+//	FGameplayEffectContextHandle ContextHandle;
+//	this->ProcessEvent(MakeEffectContextFn, &ContextHandle);
+//	return ContextHandle;
+//}
 
 FActiveGameplayEffectHandle UAbilitySystemComponent::ApplyGameplayEffectToSelf(UClass* GameplayEffectClass, float Level, const FGameplayEffectContextHandle& EffectContext)
 {

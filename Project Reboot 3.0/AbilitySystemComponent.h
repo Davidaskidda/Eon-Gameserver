@@ -4,6 +4,11 @@
 #include "GameplayAbilitySpec.h"
 #include "AttributeSet.h"
 
+struct PadHex10 { char Pad[0x10]; };
+struct PadHex18 { char Pad[0x18]; };
+struct PadHexA8 { char Pad[0xA8]; };
+struct PadHexB0 { char Pad[0xB0]; };
+
 // using FPredictionKey = PadHex18;
 // using FGameplayEventData = PadHexA8;
 
@@ -18,7 +23,7 @@ struct FPredictionKey // todo move
 
 	static UStruct* GetStruct()
 	{
-		static auto Struct = FindObject<UStruct>("/Script/GameplayAbilities.PredictionKey");
+		static auto Struct = FindObject<UStruct>("/Script/Gameplay	Abilities.PredictionKey");
 		return Struct;
 	}
 
@@ -84,7 +89,7 @@ public:
 	void ClientCancelAbility(FGameplayAbilitySpecHandle AbilityToCancel, FGameplayAbilityActivationInfo* ActivationInfo);
 	bool HasAbility(UObject* DefaultAbility);
 	FActiveGameplayEffectHandle ApplyGameplayEffectToSelf(UClass* GameplayEffectClass, float Level, const FGameplayEffectContextHandle& EffectContext = FGameplayEffectContextHandle());
-	// FGameplayEffectContextHandle MakeEffectContext();
+	//FGameplayEffectContextHandle MakeEffectContext();
 	void RemoveActiveGameplayEffectBySourceEffect(UClass* GEClass, int StacksToRemove, UAbilitySystemComponent* Instigator);
 	void ConsumeAllReplicatedData(FGameplayAbilitySpecHandle AbilityHandle, FPredictionKey* AbilityOriginalPredictionKey);
 	FGameplayAbilitySpecHandle GiveAbilityEasy(UClass* AbilityClass, UObject* SourceObject = nullptr, bool bDoNotRegive = true);

@@ -28,8 +28,8 @@ public:
 	using SizeType = int32;
 
 	ElementAllocatorType Data = nullptr; // AllocatorInstance;
-	SizeType             ArrayNum;
-	SizeType             ArrayMax;
+	SizeType             ArrayNum = 0;
+	SizeType             ArrayMax = 0;
 
 public:
 
@@ -412,11 +412,4 @@ public:
 
 		return false;
 	}
-
-	/*
-	inline InElementType& operator[](uint32 Index)
-	{
-		return Data[Index];
-	}
-	*/
 };
